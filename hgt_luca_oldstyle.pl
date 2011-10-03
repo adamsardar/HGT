@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w
 
-use lib "$ENV{HOME}/workspace/Oates/lib/";
+use lib "$ENV{HOME}/scripts/lib/";
+use lib "$ENV{HOME}/scripts/lib/Oates/lib";
 
 use strict;
 use DBI;
@@ -8,7 +9,6 @@ use Supfam::SQLFunc;
 
 #This program is supposed to: Calculate horizontal transfer between kingdoms (from LUCA)
 #Julian Gough 29.3.08
-#Adam Sardar 31.1.2011
 
 #SQL--
 my $dbh = dbConnect;
@@ -17,14 +17,14 @@ my $sth;
 
 #Variables------------------
 my ($usage,$treefile);
-my ($i,$ii,$jj,$arch,$deletions,$clade,$example,$avegenomes,$genquery,$thisone,$gennum,$selftest,$html,@flag,@temp,$count);
+my ($i,$ii,$jj,$arch,$deletions,$clade,$example,$avegenomes,$genquery,$thisone,$gennum,$selftest,$html,$flag,@temp);
 my (%parent,%genomes,%distances,%childs,%stored,%results,%distribution);
 my (@archs,@gens);
 my $j=0;my $iarch=0;
 my $iterations=500;
 my $ratio=0;
-my $falsenegrate=0.05;
-my $completes='n';
+my $falsenegrate=0.48;
+my $completes='y';
 my $average=0;
 my $test='n';
 #---------------------------
@@ -91,32 +91,23 @@ foreach $arch (0 .. scalar(@archs)-1){
 $arch=$archs[$arch];
 $iarch++;
 #get-genomes---
-%genomes=();$example='none';@flag=(0,0);
-$sth = $dbh->prepare("SELECT DISTINCT len_comb.genome,genome.domain FROM len_comb JOIN genome ON len_comb.genome=genome.genome WHERE (($lengenquery)) AND len_comb.comb = '$arch';");
-
-#OR genome.domain='$outgroup'
-
+%genomes=();$example='none';$flag=0;
+$sth = $dbh->prepare("SELECT DISTINCT len_comb.genome,genome.domain FROM len_comb JOIN genome ON len_comb.genome=genome.genome WHERE (($lengenquery) OR genome.domain='$outgroup') AND len_comb.comb = '$arch';");
 $sth->execute();
 
 while (@temp=$sth->fetchrow_array()){
 	
 if ($temp[1] eq $outgroup){
-$flag[0]=1;
-
-	if (exists($parent{$temp[0]})){
-		$genomes{$temp[0]}=1;
-		$example=$temp[0];
-	}
+$flag=1;
 }
 
-else{	
+else{
 	
-$flag[1]=1;
-	
-	if (exists($parent{$temp[0]})){
-		$genomes{$temp[0]}=1;
-		$example=$temp[0];
-	}
+if (exists($parent{$temp[0]})){
+$genomes{$temp[0]}=1;
+$example=$temp[0];
+}
+
 }
 
 }
@@ -126,9 +117,7 @@ print STDERR "No genomes for this architecture: $arch\n";die;
 }
 #--------------
 #produce distributions
-
-if ($flag[0] and $flag[1]){
-	
+if ($flag ==1 ){
 $deletions=&Deleted($clade,\%parent,\%genomes,\%childs,\%distances);
 if ($deletions > 0){
 $thisone=(length($clade)+1)/3;$thisone=$thisone.":$deletions";
@@ -195,7 +184,7 @@ print HTML join ',',keys(%genomes);
 print HTML ">$arch</a> Score: $ii<BR>\n";
 #------
 }
-}else {$count++;print STDERR "Skipped $count \n ";}
+}
 }
 #close HTML;
 dbDisconnect($dbh) ;
