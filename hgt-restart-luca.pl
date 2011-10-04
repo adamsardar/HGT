@@ -245,7 +245,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 		
 		$MRCA = $tree->get_lca(-nodes => \@NodeIDsObserved) ; #Find most Recent Common Ancestor	
 		
-		 if($model eq 'Julian' || $model eq 'poisson'){
+		 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
 				
 				($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
 				
@@ -278,6 +278,10 @@ foreach my $fork (0 .. $NoOfForks-1){
 				}elsif($model eq 'poisson'){
 					
 					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+
+				}elsif($model eq 'corrpoisson'){
+					
+					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
 
 				}else{
 					die "No appropriate model selected";
@@ -334,7 +338,10 @@ foreach my $fork (0 .. $NoOfForks-1){
 				        print HTML "<a href=http://http://supfam.cs.bris.ac.uk/SUPERFAMILY/cgi-bin/maketree.cgi?genomes=";
 				        print HTML join(',', @$NodesObserved);
 				        print HTML ">$DomArch</a> Score: $ProbLT<BR>\n";
-				
+						
+						print STDERR $DomArch."\n" unless($DomArch);
+						$DomArch = 'NULL' unless($DomArch);
+						
 						print OUT "$DomArch:$ProbLT\n";
 						print SELFTEST "$DomArch:$SelfTestLT\n";
 						#The output value 'Score:' is the probability, givn the model, that there are more genomes in the simulation than in reality.
