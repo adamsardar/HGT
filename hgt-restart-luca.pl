@@ -99,7 +99,7 @@ GetOptions("verbose|v!"  => \$verbose,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
 
-#Sub definitions
+die "Inappropriate model chosen\n" unless ($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson');
 
 #---------------------------------------
 
@@ -134,6 +134,7 @@ my ($root,$TreeCacheHash,$tree) = BuildTreeCacheHash($TreeFile); # A massive lim
 print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
+print STDERR "Model used: $model\n";
 
 #--Check Input Tree------------------------
 
@@ -153,19 +154,23 @@ while (my @query = $sth->fetchrow_array() ) {
 			
 	#---------Get a list of domain archs present in tree----------------------
 
-my $lencombquery = join ("' or len_comb.genome='", @TreeGenomes); $lencombquery = "(len_comb.genome='$lencombquery')";# An ugly way to make the query run, but perl DBI only alows for a single value to occupy a wildcard
+my $lensupraquery = join ("' or len_supra.genome='", @TreeGenomes); $lensupraquery = "(len_supra.genome='$lensupraquery')";# An ugly way to make the query run, but perl DBI only alows for a single value to occupy a wildcard
 
 my $DomCombGenomeHash = {};
 
 my $tic = Time::HiRes::time;
 
 if($completes eq 'n'){
-	$sth = $dbh->prepare("SELECT DISTINCT genome,len_comb.comb FROM len_comb  WHERE $lencombquery AND len_comb.comb != '_gap_';");
+	
+	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id WHERE len_supra.ascomb_prot_number > 0 AND $lensupraquery AND comb_index.id != 1;"); #comb_id =1 is '_gap_'
+		
 }elsif($completes eq 'y'){
-	$sth = $dbh->prepare("SELECT DISTINCT genome,len_comb.comb FROM len_comb WHERE $lencombquery AND len_comb.comb NOT LIKE '%_gap_%';");
+
+	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id WHERE len_supra.ascomb_prot_number > 0 AND $lensupraquery AND comb_index.id != 1 AND comb_index.comb NOT LIKE '%_gap_%';"); #comb_id =1 is '_gap_'
 }else{
 	die "Inappropriate flag for whether or not to include architectures containing _gap_";
 }
+
 $sth->execute();
 
 while (my ($genomereturned,$combreturned) = $sth->fetchrow_array() ){
