@@ -62,7 +62,6 @@ use Bio::Tree::TreeFunctionsI;
 
 use Parallel::ForkManager;
 
- 
 use List::Util qw(sum);#Used in generating summary statistics
 
 # Command Line Options
@@ -128,13 +127,14 @@ my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 # Main Script Content
 #----------------------------------------------------------------------------------------------------------------
 
-
 my ($root,$TreeCacheHash,$tree) = BuildTreeCacheHash($TreeFile); # A massive limitation of this script is the use of BioPerl TreeIO which is SLOOOOW. This is a lookup hash to speed things up.
 
 print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
 print STDERR "Model used: $model\n";
+print STDERR "Treefile:$TreeFile \n";
+print STDERR "Command line invocation: $0\n";
 
 #--Check Input Tree------------------------
 
@@ -207,9 +207,10 @@ for my $i (0 .. $NoOfForks-1){
 
 push(@{$ForkJobsHash->{0}},@{$DomArchs}[($NoOfForks)*$binsize .. ($NoOfForks)*$binsize+$remainder-1]) if ($remainder);
 
+print STDERR "No Dom Archs in job batch is approx: ".$binsize."\n";
+
 #----------------------------------------------------
 
-print STDERR "No Dom Archs in job batch is approx: ".$binsize."\n";
 
 #Main-loop-------------------------------------------
 
