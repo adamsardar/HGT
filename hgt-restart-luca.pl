@@ -67,6 +67,8 @@ use List::Util qw(sum);#Used in generating summary statistics
 # Command Line Options
 #----------------------------------------------------------------------------------------------------------------
 
+my $TotalTic = Time::HiRes::time; #USed in timing the total runtime of script
+
 my $verbose; #Flag for verbose output from command line opts
 my $debug;   #As above for debug
 my $help;    #Same again but this time should we output the POD man page defined after __END__
@@ -97,20 +99,15 @@ GetOptions("verbose|v!"  => \$verbose,
            "check|c:s" => \$check,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
+#Print out some help if it was asked for or if no arguments were given.
+pod2usage(-exitstatus => 0, -verbose => 2) if $help;
+
 
 die "Inappropriate model chosen\n" unless ($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson');
 
 #---------------------------------------
 
 my $dbh = dbConnect();
-
-#my $dbh = DBI->connect("DBI:mysql:superfamily;localhost"
-#                                        ,''
-#                                        , undef
-#                                        ,{RaiseError =>1}
-#                                    ) or die ;
-#These two alternate DBI configurations make it easy to run the script on the amazon EC2 cloud
-# Connect to database
 
 `mkdir /dev/shm/temp` unless (-d '/dev/shm/temp');
 my $RAMDISKPATH = '/dev/shm/temp';
@@ -129,12 +126,34 @@ my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 
 my ($root,$TreeCacheHash,$tree) = BuildTreeCacheHash($TreeFile); # A massive limitation of this script is the use of BioPerl TreeIO which is SLOOOOW. This is a lookup hash to speed things up.
 
+open RUNINFO, ">HGT_info.$OutputFilename";
+
 print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
 print STDERR "Model used: $model\n";
-print STDERR "Treefile:$TreeFile \n";
-print STDERR "Command line invocation: $0\n";
+print STDERR "Treefile: $TreeFile \n";
+print STDERR "Complete Architectures?: $completes\n";
+print STDERR "Command line invocation: $0 ";
+my $CommandLine = join(' ',@ARGV);
+print STDERR $CommandLine."\n";
+
+print RUNINFO "No of iterations per run is: $Iterations\n";
+print RUNINFO "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
+print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n";
+print RUNINFO "Model used: $model\n";
+print RUNINFO "Treefile: $TreeFile \n";
+print RUNINFO "Complete Architectures?: $completes\n\n\n";
+print RUNINFO "Command line invocation: $0 ";
+print RUNINFO $CommandLine."\n\n\n";
+
+close RUNINFO;
+
+open TREEINFO, ">HGT_tree.$OutputFilename";
+my $NewickTree = TreeHash2Newick($TreeCacheHash,$root);
+print TREEINFO $NewickTree."\n";
+close TREEINFO;
+# Dump tree into an output file
 
 #--Check Input Tree------------------------
 
@@ -162,11 +181,19 @@ my $tic = Time::HiRes::time;
 
 if($completes eq 'n'){
 	
-	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id WHERE len_supra.ascomb_prot_number > 0 AND $lensupraquery AND comb_index.id != 1;"); #comb_id =1 is '_gap_'
+	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
+						FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
+						WHERE len_supra.ascomb_prot_number > 0 
+						AND $lensupraquery 
+						AND comb_index.id != 1;"); #comb_id =1 is '_gap_'
 		
 }elsif($completes eq 'y'){
 
-	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id WHERE len_supra.ascomb_prot_number > 0 AND $lensupraquery AND comb_index.id != 1 AND comb_index.comb NOT LIKE '%_gap_%';"); #comb_id =1 is '_gap_'
+	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
+							FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
+							WHERE len_supra.ascomb_prot_number > 0 
+							AND $lensupraquery AND comb_index.id != 1 
+							AND comb_index.comb NOT LIKE '%_gap_%';"); #comb_id =1 is '_gap_'
 }else{
 	die "Inappropriate flag for whether or not to include architectures containing _gap_";
 }
@@ -190,7 +217,7 @@ my $DomArchs = [];
 
 dbDisconnect($dbh) ; 
 
-my $NoOfForks = $maxProcs;
+my $NoOfForks = $maxProcs;RUNINFO
 $NoOfForks = 1 unless($maxProcs);
 
 my $remainder = scalar(@$DomArchs)%$NoOfForks;
@@ -252,7 +279,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 		$MRCA = $tree->get_lca(-nodes => \@NodeIDsObserved) ; #Find most Recent Common Ancestor	
 		
 		 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
-				
+		 	
 				($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
 				
 			}else{
@@ -391,6 +418,16 @@ print PLOT "Hist.py -f './.DelRates.dat' -o 'ParDelRates.png' -t 'Histogram of N
 print PLOT "Hist.py -f './SelfTest-RawData.colsv' -o SelfTest.png -t 'Histogram of Self-Test Cumulative p-Values' -x 'P(Nm < nm')' -y 'Frequency'\n\n\n";
 print PLOT `Hist.py -f ./BiasEstimates.colsv -o Bias.png --xlab 'Simualtion' --ylab 'Bias' --title 'Estimate of per simulation bias in deletion probability distribution'`;
 close PLOT;
+
+my $TotalToc = Time::HiRes::time;
+my $TotalTimeTaken = ($TotalToc - $TotalTic);
+my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
+
+open RUNINFOTIME, ">>HGT_info.$OutputFilename";
+print RUNINFOTIME $TotalTimeTaken." seconds\n";
+print RUNINFOTIME $TotalTimeTakenHours." hours\n";
+close RUNINFOTIME;
+
 #-------
 __END__
 
