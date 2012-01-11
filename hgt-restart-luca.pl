@@ -124,7 +124,17 @@ my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 # Main Script Content
 #----------------------------------------------------------------------------------------------------------------
 
-my ($root,$TreeCacheHash,$tree) = BuildTreeCacheHash($TreeFile); # A massive limitation of this script is the use of BioPerl TreeIO which is SLOOOOW. This is a lookup hash to speed things up.
+#Produce a tree hash, either from SQL or a provided treefile
+my ($root,$TreeCacheHash,$tree);
+
+if($TreeFile){
+	
+	($root,$TreeCacheHash,$tree) = BuildTreeCacheHash($TreeFile); # A massive limitation of this script is the use of BioPerl TreeIO which is SLOOOOW. This is a lookup hash to speed things up.
+
+}else{
+	
+	die "no tree file or SQL tree node or tree file provided as tree to calculate HGT upon\n";	
+}
 
 open RUNINFO, ">HGT_info.$OutputFilename";
 
