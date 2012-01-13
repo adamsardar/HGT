@@ -142,20 +142,19 @@ print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
 print STDERR "Model used: $model\n";
+print STDERR "Cores used: $maxProcs\n";
 print STDERR "Treefile: $TreeFile \n";
 print STDERR "Complete Architectures?: $completes\n";
 print STDERR "Command line invocation: $0 ";
-my $CommandLine = join(' ',@ARGV);
-print STDERR $CommandLine."\n";
 
 print RUNINFO "No of iterations per run is: $Iterations\n";
 print RUNINFO "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n";
 print RUNINFO "Model used: $model\n";
+print RUNINFO "Cores used: $maxProcs\n";
 print RUNINFO "Treefile: $TreeFile \n";
 print RUNINFO "Complete Architectures?: $completes\n\n\n";
 print RUNINFO "Command line invocation: $0 ";
-print RUNINFO $CommandLine."\n\n\n";
 
 close RUNINFO;
 
@@ -437,6 +436,9 @@ open RUNINFOTIME, ">>HGT_info.$OutputFilename";
 print RUNINFOTIME $TotalTimeTaken." seconds\n";
 print RUNINFOTIME $TotalTimeTakenHours." hours\n";
 close RUNINFOTIME;
+
+print STDERR $TotalTimeTaken." seconds\n";
+print STDERR $TotalTimeTakenHours." hours\n";
 
 #-------
 __END__
