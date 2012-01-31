@@ -1,5 +1,7 @@
 #!/usr/bin/perl -w
 
+die "DO NOT use this script. It is old, not written by me and no longer maintained. It is kept here purely for legacy reasons!\n\n";
+
 use lib "$ENV{HOME}/workspace/Oates/lib/";
 
 use strict;

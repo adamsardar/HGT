@@ -168,6 +168,7 @@ foreach $arch ( 0 .. scalar(@archs) - 1 ) {
             if ( $i == $gennum ) {
                 if ( exists( $distribution{$i} ) ) {
                     $jj = $ii + 1;
+                    
                     for ( 1 .. $distribution{$i} ) {
                       
                             $results{$jj} += 1 / $distribution{$i};
