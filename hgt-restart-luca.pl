@@ -50,6 +50,7 @@ use Getopt::Long;                     #Deal with command line options
 use Pod::Usage;                       #Print a usage man page from the POD comments after __END__
 
 use DBI;
+
 use Supfam::Utils;
 use Supfam::hgt;
 use Supfam::SQLFunc;
@@ -58,12 +59,8 @@ use Supfam::TreeFuncsNonBP;
 use File::Temp;
 use Time::HiRes;
 
-use Bio::TreeIO;
-use Bio::Tree::TreeFunctionsI;
-
 use Parallel::ForkManager;
 use Math::Random qw(random_uniform_integer);
-use Math::Round;
 use List::Util qw(sum);#Used in generating summary statistics
 
 # Command Line Options
