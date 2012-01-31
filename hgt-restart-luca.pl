@@ -376,9 +376,6 @@ foreach my $fork (0 .. $NoOfForks-1){
 			my $DeletionNumberMean = sum(@SimulatedNumberOfDeletions)/scalar(@SimulatedNumberOfDeletions);
 			my $BiasEstimate = $DeletionNumberMean-$dels; #This is a measure as to how bias the simulation is - the mean of the number of deletions in a simualtion shoudl be the number of deletions observed
 			#############
-				
-			#@$RawResults = random_uniform_integer($Iterations,0,$CladeSize);
-												
 			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 			
