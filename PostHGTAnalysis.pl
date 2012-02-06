@@ -6,7 +6,8 @@ PostHGTAnalysisI<.pl>
 
 =head1 USAGE
 
- PostHGTAnalysis.pl [options -v,-d,-h] <ARGS>
+ PostHGTAnalysis.pl [options -v,-d,-h] <ARGS> -t --tree treefile -r --rawdata RawDataFile -d --delrates DelRatesFile -s --simulations SimulationsDataFile -e --Examples #OfExamples -w --width WidthOfTreePlots 
+
 
 =head1 SYNOPSIS
 
