@@ -176,10 +176,12 @@ if ($i == $gennum){
 $jj=$ii+1;
 for (1 .. $distribution{$i}){
   if (exists($results{$jj})){
-$results{$jj}=$results{$jj}+1/$distribution{$i};$average=$average+$jj/$distribution{$i};
+$results{$jj}=$results{$jj}+1/$distribution{$i};
+$average=$average+$jj/$distribution{$i};
 }
 else{
-$results{$jj}=1/$distribution{$i};$average=$average+$jj/$distribution{$i};
+$results{$jj}=1/$distribution{$i};
+$average=$average+$jj/$distribution{$i};
 }
 $jj++;
 }

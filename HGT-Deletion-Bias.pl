@@ -3,18 +3,18 @@
 
 =head1 NAME
 
-hgt-restart-luca<.pl>
+HGT-Deletion-Bias<.pl>
 
 =head1 USAGE
 
- hgt-restart-luca.pl [options -v,-d,-h] <ARGS>
+HGT-Deletion-Bias.pl [options -v,-d,-h] <ARGS>
  
  Example usage: 
  hgt-restart-luca.pl --check n -itr 5000 -p nocores -i treefile -o output
 
 =head1 SYNOPSIS
 
-A script for analysising the global extent of horizontal gene trasnfer by studying the phyletic pattern of domain architectures across a given tree. 
+A script for studying if deletion rates inferred using ML estimator for a poisson process result in bias in HGT studies.
 
 =head1 AUTHOR
 
@@ -22,7 +22,7 @@ B<Adam Sardar> - I<adam.sardar@bristol.ac.uk>
 
 =head1 COPYRIGHT
 
-Copyright 2011 Gough Group, University of Bristol.
+Copyright 2012 Gough Group, University of Bristol.
 
 =head1 EDIT HISTORY
 
@@ -111,11 +111,8 @@ my $RAMDISKPATH = '/dev/shm/temp';
 
 # Make a temporary directory for output data 
 my $RAWPATH = File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
-my $HTMLPATH = File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
-my $DELSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 my $SIMULATIONSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 my $SELFTERSTPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
-my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 
 # Main Script Content
 #----------------------------------------------------------------------------------------------------------------
@@ -136,7 +133,7 @@ if($TreeFile){
 	die "no tree file or SQL tree node or tree file provided as tree to calculate HGT upon\n";	
 }
 
-open RUNINFO, ">HGT_info.$OutputFilename";
+open RUNINFO, ">HGT_Deletion_Bias_info.$OutputFilename";
 
 print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
@@ -158,7 +155,7 @@ print RUNINFO "Command line invocation: $0 \n";
 
 close RUNINFO;
 
-open TREEINFO, ">HGT_tree.$OutputFilename";
+open TREEINFO, ">HGT_Deletion_Bias_tree.$OutputFilename";
 my $NewickTree = ExtractNewickSubtree($TreeCacheHash, $root,1,0);
 print TREEINFO $NewickTree."\n";
 close TREEINFO;
@@ -166,10 +163,8 @@ close TREEINFO;
 
 #--Check Input Tree------------------------
 
-
 my @TreeGenomes = map{$TreeCacheHash->{$_}{'node_id'}}@{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
 my @TreeGenomesNodeIDs = @{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
-
 
 my $genquery = join ("' or genome.genome='", @TreeGenomes); $genquery = "(genome.genome='$genquery')";# An ugly way to make the query run
 
@@ -264,10 +259,8 @@ foreach my $fork (0 .. $NoOfForks-1){
 	if ($maxProcs){$pm->start and next};
 		
 	my $CachedResults = {}; #Allow for caching of distributions after Random Model to speed things up
-		
-	open HTML, ">$HTMLPATH/$OutputFilename".$$.".html" or die "Can't open file $HTMLPATH/$OutputFilename".$!;
+
 	open OUT, ">$RAWPATH/$OutputFilename".$$.".-RawData.colsv" or die "Can't open file $RAWPATH/$OutputFilename".$!;
-	open DELS, ">$DELSPATH/DelRates".$$.".dat" or die "Can't open file $DELSPATH/DelRates".$!;
 	open RAWSIM, ">$SIMULATIONSPATH/SimulationData".$$.".dat" or die "Can't open file $SIMULATIONSPATH/SimulationData".$!;		
 	open SELFTEST, ">$SELFTERSTPATH/SelfTestData".$$.".dat" or die "Can't open file $SELFTERSTPATH/SelfTestData".$!;
 	
@@ -287,6 +280,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 		my $MRCA;
 		my $deletion_rate;
 		my ($dels, $time) = (0,0);
+		my $InterDeletionDistances;#An array ref of all the distances between observed deletion points
 		
 		unless(scalar(@$NodesObserved) == 1){
 			
@@ -294,54 +288,39 @@ foreach my $fork (0 .. $NoOfForks-1){
 
 			 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
 			 	
-					($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+					($dels, $time, $InterDeletionDistances) = DeletedJulianDetailed($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$DomArch); # $MRCA,$dels,$time,$HashOfGenomesObserved,$TreeCacheHash,$DomArch - calculate deltion rate over tree	
 					
 				}else{
+					
 					die "Inappropriate model selected";
 				}
 				
 			$deletion_rate = $dels/$time;
 			
 		}else{
+			
 			$deletion_rate = 0;	
 			$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
 		}
 				
 		@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
 		@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
-				
-		print DELS "$DomArch:$deletion_rate:$dels\n" unless ($deletion_rate == 0);
-		#print "$DomArch:$deletion_rate\n";
 		
 		my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
-				
+		
+		my $SimulatedInterDeletionDistances; #This will be an arrayref of simulated distances between data points
+	
 		if($deletion_rate > 0){
 	
-			unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
-						
-				if($model eq 'Julian'){
-									
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-																					
-				}elsif($model eq 'poisson'){
+				if($model eq 'corrpoisson'){
 					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-
-				}elsif($model eq 'corrpoisson'){
-					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+					($SimulatedInterDeletionDistances) = RandomModelCorrPoissonDeletionDetailed($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
 
 				}else{
 					die "No appropriate model selected";
 				}
-				
-			$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
 			
-			}else{
-				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
-			}
-			
-			my $RawSimData = join(',',@$RawResults);
+			my $RawSimData = join(',',@$SimulatedInterDeletionDistances);
 			print RAWSIM @$CladeGenomes.','.@$NodesObserved.':'.$DomArch.':'.$RawSimData."\n";
 			#Print simulation data out to file so as to allow for testing of convergence
 			
@@ -358,32 +337,33 @@ foreach my $fork (0 .. $NoOfForks-1){
 		my $CladeSize = scalar(@$CladeGenomes);
 	
 		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
-
-			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
-			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
-			
-			$distribution->{$selftest}--;
-	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
-
-			#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
 		
-	        print HTML "<a href=http://http://supfam.cs.bris.ac.uk/SUPERFAMILY/cgi-bin/maketree.cgi?genomes=";
-	        print HTML join(',', @$NodesObserved);
-	        print HTML ">$DomArch</a> Score: $PosteriorQuantileScore<BR>\n";
+			#Generate selftest values - remove them from the generated data
+			#Map distribution into a hash		
 			
-			print STDERR $DomArch."\n" unless($DomArch);
-			$DomArch = 'NULL' unless($DomArch);
+			#Make sure that results array is mapped into continuous realm appropriately. - may need to write a new function
 			
-			print OUT "$DomArch:$PosteriorQuantileScore\n";
-			print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
+			foreach my $DeletionDistanceIndex (0 .. scalar(@$InterDeletionDistances)-1){
+				
+				my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
+				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
+				
+				$distribution->{$selftest}--;
+		 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+				$distribution->{$selftest}++;
+	
+				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
+				
+				print OUT "$DomArch:$PosteriorQuantileScore\n";
+				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
+			}
+			
 			#The output value 'Score:' is the probability, givn the model, that there are more genomes in the simulation than in reality. Also called the 'Posterior quantile'
 		}
 
 }
 
-	close HTML;
 	close OUT;
-	close DELS;
 	close RAWSIM;
 	close SELFTEST;
 	
@@ -396,33 +376,27 @@ print STDERR "Waiting for Children...\n";
 $pm->wait_all_children if ($maxProcs);
 print STDERR "Everybody is out of the pool!\n";
 
-`cat $HTMLPATH/* > ./$OutputFilename.html`;
-`cat $DELSPATH/* > ./.DelRates.dat`;
+
 `cat $RAWPATH/* > ./$OutputFilename-RawData.colsv`;
 `cat $SIMULATIONSPATH/* > ./RawSimulationDists$Iterations-Itr$$.dat`;
 `cat $SELFTERSTPATH/* > ./SelfTest-RawData.colsv`;
-`cat $BIASPATH/* > ./BiasEstimates.colsv`;
 
 
 `Hist.py -f "./$OutputFilename-RawData.colsv" -o $OutputFilename.png -t "Histogram of Cumulative p-Values" -x "P(Nm < nr)" -y "Frequency"	` ;
 `Hist.py -f "./SelfTest-RawData.colsv" -o SelfTest.png -t "Histogram of Self-Test Cumulative p-Values" -x "P(Nm < nm)" -y "Frequency"	` ;
-`Hist.py -f "./.DelRates.dat" -o ParDelRates.png -t "Histogram of Non-zero DeletionRates" -x "Deletion Rate" -y "Frequency"	-l Deletions`;
-`Hist.py -f ./BiasEstimates.colsv -o Bias.png --xlab 'Simualtion' --ylab 'Bias' --title 'Estimate of per simulation bias in deletion probability distribution'`;
 
 # Plot a couple of histograms for easy inspection of the data
 
 open PLOT, ">./.ParPlotCommands.txt" or die $!;
 print PLOT "Hist.py -f ./$OutputFilename-RawData.colsv -o $OutputFilename.png -t 'Histogram of Scores' -x 'Score' -y 'Frequency'\n\n\n";
-print PLOT "Hist.py -f './.DelRates.dat' -o 'ParDelRates.png' -t 'Histogram of Non-zero DeletionRates' -x 'Deletion Rate' -y 'Frequency'	-l 'Deletions'\n\n\n";
 print PLOT "Hist.py -f './SelfTest-RawData.colsv' -o SelfTest.png -t 'Histogram of Self-Test Cumulative p-Values' -x 'P(Nm < nm')' -y 'Frequency'\n\n\n";
-print PLOT `Hist.py -f ./BiasEstimates.colsv -o Bias.png --xlab 'Simualtion' --ylab 'Bias' --title 'Estimate of per simulation bias in deletion probability distribution'`;
 close PLOT;
 
 my $TotalToc = Time::HiRes::time;
 my $TotalTimeTaken = ($TotalToc - $TotalTic);
 my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
 
-open RUNINFOTIME, ">>HGT_info.$OutputFilename";
+open RUNINFOTIME, ">>HGT_info_Deletion_Bias.$OutputFilename";
 print RUNINFOTIME $TotalTimeTaken." seconds\n";
 print RUNINFOTIME $TotalTimeTakenHours." hours\n";
 close RUNINFOTIME;

@@ -49,7 +49,6 @@ use Getopt::Long;                     #Deal with command line options
 use Pod::Usage;                       #Print a usage man page from the POD comments after __END__
 
 use DBI;
-
 use Supfam::Utils;
 use Supfam::hgt;
 use Supfam::SQLFunc;
@@ -60,7 +59,6 @@ use Time::HiRes;
 
 use Parallel::ForkManager;
 use Math::Random qw(random_uniform_integer);
-use List::Util qw(sum);#Used in generating summary statistics
 
 # Command Line Options
 #----------------------------------------------------------------------------------------------------------------
@@ -80,6 +78,8 @@ my $Iterations = 500;
 my $model = 'poisson';
 my $store = 0;
 my $check = 'y'; #Perform a sanity check on the tree? This should be 'y' unless under extreme circumstances
+
+my $NoSimulatedDomainArchitectures = 1000; #Number of 'artificial' domain architectures to be used on the given tree topology
 
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
@@ -170,7 +170,6 @@ close TREEINFO;
 my @TreeGenomes = map{$TreeCacheHash->{$_}{'node_id'}}@{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
 my @TreeGenomesNodeIDs = @{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
 
-
 my $genquery = join ("' or genome.genome='", @TreeGenomes); $genquery = "(genome.genome='$genquery')";# An ugly way to make the query run
 
 my $sth = $dbh->prepare("SELECT include,password,genome FROM genome WHERE $genquery;");
@@ -227,6 +226,26 @@ my $DomArchs = [];
 
 dbDisconnect($dbh);
 
+#Give all of the abve data, we now wish to create artificial simulations to study the sensitivity of our method
+
+#for each architecture
+
+#Measure an empirical deletion rate
+
+#Perform a single iteration of our model. Treat this as a 'real' observation - will have to write another function for this!
+
+#Store in a big hash, as before
+
+	#For each degree of HGT - 0%, 10%, 20% ... etc.
+	
+		#For each rate of HGT (1,2,5,10,30) etc
+	
+		#Create a new hash and shuffle around DAs (as per our HGT model)
+	
+		#Perform an HGT analysis - measure deletion rate, do a simulation, plot posterior quantiles
+	
+		#Label output with rate and percentage	
+
 my $NoOfForks = $maxProcs;
 $NoOfForks = 1 unless($maxProcs);
 
@@ -259,7 +278,6 @@ foreach my $fork (0 .. $NoOfForks-1){
 	
 	my $ArchsListRef = $ForkJobsHash->{$fork};
 		
-		
 	# Forks and returns the pid for the child:
 	if ($maxProcs){$pm->start and next};
 		
@@ -270,91 +288,18 @@ foreach my $fork (0 .. $NoOfForks-1){
 	open DELS, ">$DELSPATH/DelRates".$$.".dat" or die "Can't open file $DELSPATH/DelRates".$!;
 	open RAWSIM, ">$SIMULATIONSPATH/SimulationData".$$.".dat" or die "Can't open file $SIMULATIONSPATH/SimulationData".$!;		
 	open SELFTEST, ">$SELFTERSTPATH/SelfTestData".$$.".dat" or die "Can't open file $SELFTERSTPATH/SelfTestData".$!;
-	open BIAS, ">$BIASPATH/BiasEstimate".$$.".dat" or die "Can't open file $BIASPATH/BiasEstimate".$!;
-			
+	
+	my ($RAWSIM_FH,$DELS_FH);
+	($RAWSIM_FH,$DELS_FH) = (*RAWSIM,*DELS) ;
+	
+	my $TreeGenomesArrayRef = \@TreeGenomesNodeIDs;
+	
 	foreach my $DomArch (@$ArchsListRef){
 	
-	my ($CladeGenomes,$NodesObserved);
+		my ($deletion_rate,$selftest,$distribution,$dels,$time,$NodesObserved,$CladeGenomes,$DeletionsNumberDistribution) = run_HGT_Analysis_DA($TreeCacheHash,$root,$DomCombGenomeHash,$TreeGenomesArrayRef,$FalseNegativeRate,$Iterations,$CachedResults,$model,$store,$DomArch,$RAWSIM_FH,$DELS_FH);
+		#Generate the core data for the analysis - the posterior distributions, the deletions rates etc
 		
-		my $NodeName2NodeID = {};
-		map{$NodeName2NodeID->{$TreeCacheHash->{$_}{'node_id'}}= $_ }@TreeGenomesNodeIDs; #Generate a lookup table of leaf_name 2 node_id
-		
-		my $HashOfGenomesObserved = $DomCombGenomeHash->{$DomArch};
-		@$NodesObserved = keys(%$HashOfGenomesObserved);
-		
-		my @NodeIDsObserved = @{$NodeName2NodeID}{@$NodesObserved};#Hash slice to extract the node ids of the genomes observed
-		#Get the node IDs as the follwoing function doesn't work with the raw node tags
-
-		my $MRCA;
-		my $deletion_rate;
-		my ($dels, $time) = (0,0);
-		
-		unless(scalar(@$NodesObserved) == 1){
-			
-			$MRCA = FindMRCA($TreeCacheHash,$root,\@NodeIDsObserved);#($TreeCacheHash,$root,$LeavesArrayRef)
-
-			 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
-			 	
-					($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
-					
-				}else{
-					die "Inappropriate model selected";
-				}
-				
-			$deletion_rate = $dels/$time;
-			
-		}else{
-			$deletion_rate = 0;	
-			$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
-		}
-				
-		@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
-		@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
-				
-		print DELS "$DomArch:$deletion_rate:$dels\n" unless ($deletion_rate == 0);
-		#print "$DomArch:$deletion_rate\n";
-		
-		my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
-				
-		if($deletion_rate > 0){
-	
-			unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
-						
-				if($model eq 'Julian'){
-									
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-																					
-				}elsif($model eq 'poisson'){
-					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-
-				}elsif($model eq 'corrpoisson'){
-					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-
-				}else{
-					die "No appropriate model selected";
-				}
-				
-			$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
-			
-			}else{
-				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
-			}
-			
-			my $RawSimData = join(',',@$RawResults);
-			print RAWSIM @$CladeGenomes.','.@$NodesObserved.':'.$DomArch.':'.$RawSimData."\n";
-			#Print simulation data out to file so as to allow for testing of convergence
-			
-		}else{
-			
-			($selftest,$distribution) = ('NULL',{});
-		}
-		
-		
-		
-		
-#-------------- Output
+		#-------------- Output
 		 
 		my $NoGenomesObserved = scalar(@$NodesObserved);
 		my $CladeSize = scalar(@$CladeGenomes);
@@ -363,16 +308,10 @@ foreach my $fork (0 .. $NoOfForks-1){
 		
 		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
 					
-					
-			#print $deletion_rate."  <- deletion rat \n";
-			
 			#Gain an estimate of bias in the simulation (shoudl be 0)
 			my @SimulatedNumberOfDeletions;
 			map{@SimulatedNumberOfDeletions=(@SimulatedNumberOfDeletions,(($_)x($DeletionsNumberDistribution->{$_})))}keys(%$DeletionsNumberDistribution); #Produces a list of the simualted number of deletions
-			
-			my $DeletionNumberMean = sum(@SimulatedNumberOfDeletions)/scalar(@SimulatedNumberOfDeletions);
-			my $BiasEstimate = $DeletionNumberMean-$dels; #This is a measure as to how bias the simulation is - the mean of the number of deletions in a simualtion shoudl be the number of deletions observed
-			#############
+
 			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 			
@@ -391,7 +330,6 @@ foreach my $fork (0 .. $NoOfForks-1){
 			print OUT "$DomArch:$PosteriorQuantileScore\n";
 			print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
 			#The output value 'Score:' is the probability, givn the model, that there are more genomes in the simulation than in reality. Also called the 'Posterior quantile'
-			print BIAS "$DomArch:$BiasEstimate\n";
 		}
 
 }
@@ -401,10 +339,8 @@ foreach my $fork (0 .. $NoOfForks-1){
 	close DELS;
 	close RAWSIM;
 	close SELFTEST;
-	close BIAS;
 	
 $pm->finish if ($maxProcs); # Terminates the child process
-
 
 }
 

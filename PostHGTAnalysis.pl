@@ -62,6 +62,8 @@ my ($SimulationsDataFile) = glob("./RawSimulationDists*");
 my $NumberOfExamples = 20;
 my $Width = 1200;
 
+my $OutputDir = 'IndepthStudyOfDAs';
+
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
            "debug|d!"  => \$debug,
@@ -72,6 +74,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "simulations|s:s" => \$SimulationsDataFile,
            "Examples|e:i" => \$NumberOfExamples,
            "width|w:i" => \$Width,
+           "outputdir|o:s" => \$OutputDir,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 
 #Print out some help if it was asked for or if no arguments were given.
@@ -82,7 +85,7 @@ pod2usage(-exitstatus => 0, -verbose => 2) if $help;
 
 
 #Create an output directory if it doesn't already exist
-mkdir("./IndepthStudyOfDAs");
+mkdir("./$OutputDir");
 
 #Read in Del Rates
 my $DomArch2DelsHash = {};
@@ -151,7 +154,7 @@ foreach my $DomArch (@StudiedDomArchs){
 	`prepareTraitTreeOverlay.pl -da $DomArch -ss 1 -t $treefile`;
 	
 	#Pump out the tree into output dir, labelling the file with dom arch, score and del rate
-	my $FileOut = "./IndepthStudyOfDAs/".$DomArch.".DelRate.".$DelRate.".Score.".$Score.".svg";
+	my $FileOut = "./$OutputDir/".$DomArch.".DelRate.".$DelRate.".Score.".$Score.".svg";
 	
 	`nw_display -sr -S -w $Width -c treedisplayoptions.css ./$treefile > $FileOut`;
 	
@@ -159,7 +162,7 @@ foreach my $DomArch (@StudiedDomArchs){
 	`prepareTraitTreeOverlay.pl -da $DomArch -ss 0 -t $treefile`;
 	
 	#Pump out the tree into output dir, labelling the file with dom arch, score and del rate
-	$FileOut = "./IndepthStudyOfDAs/".$DomArch.".DelRate.".$DelRate.".Score.".$Score.".WithSupras.svg";
+	$FileOut = "./$OutputDir/".$DomArch.".DelRate.".$DelRate.".Score.".$Score.".WithSupras.svg";
 	
 	`nw_display -sr -S -w $Width -c treedisplayoptions.css ./$treefile > $FileOut`;
 	
@@ -171,13 +174,14 @@ foreach my $DomArch (@StudiedDomArchs){
 	
 	print CLADESIZE $DomArch.":".$cladesize."\n";
 	
-	`Hist.py -f './.TempHistFile.dat' -o ./IndepthStudyOfDAs/$DomArch.HistPlacement.png -t '$DomArch \nSimulations' -x 'Number Of Genomes' -y 'Frequency' -l 'Score:$Score\nDel Rate:$DelRate\nClade Size:$cladesize' --vline $NumberOfGenomes --column 0`;
+	`Hist.py -f './.TempHistFile.dat' -o ./$OutputDir/$DomArch.HistPlacement.png -t '$DomArch \nSimulations' -x 'Number Of Genomes' -y 'Frequency' -l 'Score:$Score\nDel Rate:$DelRate\nClade Size:$cladesize Observed:$NumberOfGenomes' --vline $NumberOfGenomes --column 0`;
 }
 
 close CLADESIZE;
 
-`Hist.py -f './.CladeSizes.dat' -o ./CladeSizesHist.png -t 'Histogram Of Cladesizes' -x 'Clade Size' -y 'Frequency' -l 'Number of Dom Archs' --column 1`;
-
+unless(-e "./CladeSizesHist.png"){
+	`Hist.py -f './.CladeSizes.dat' -o ./CladeSizesHist.png -t 'Histogram Of Cladesizes' -x 'Clade Size' -y 'Frequency' -l 'Number of Dom Archs' --column 1`;
+}
 
 my @Scores = values(%$DomArch2ScoresHash);
 

@@ -71,7 +71,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "output|o:s" => \$OutputFilename,
            "tree|i:s" => \$TreeFile,
            "no_iternations|itr:i" => \$Iterations,
-           "fals_negative_rate|fnr:f" => \$FalseNegativeRate,
+           "false_negative_rate|fnr:f" => \$FalseNegativeRate,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 
 #Print out some help if it was asked for or if no arguments were given.
