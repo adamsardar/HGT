@@ -10,7 +10,7 @@ HGT-Deletion-Bias<.pl>
 HGT-Deletion-Bias.pl [options -v,-d,-h] <ARGS>
  
  Example usage: 
- hgt-restart-luca.pl --check n -itr 5000 -p nocores -i treefile -o output
+ HGT-Deletion-Bias.pl --check n -itr 5000 -p nocores -i treefile -o output
 
 =head1 SYNOPSIS
 
@@ -312,7 +312,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 	
 		if($deletion_rate > 0){
 	
-				if($model eq 'corrpoisson'){
+				if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
 					
 					($SimulatedInterDeletionDistances) = RandomModelCorrPoissonDeletionDetailed($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
 
@@ -335,22 +335,27 @@ foreach my $fork (0 .. $NoOfForks-1){
 		 
 		my $NoGenomesObserved = scalar(@$NodesObserved);
 		my $CladeSize = scalar(@$CladeGenomes);
-	
+		
+		
 		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
 		
-			#Generate selftest values - remove them from the generated data
-			#Map distribution into a hash		
-			
-			#Make sure that results array is mapped into continuous realm appropriately. - may need to write a new function
-			
+		my @SelfTestIndicies = random_uniform_integer(scalar(@$InterDeletionDistances),0,(scalar(@$SimulatedInterDeletionDistances)-1));
+		
 			foreach my $DeletionDistanceIndex (0 .. scalar(@$InterDeletionDistances)-1){
 				
-				my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
+				my $SingleValue = $$InterDeletionDistances[$DeletionDistanceIndex];
+				
+				my $PosteriorQuantileScore = calculateContinuousPosteriorQuantile($SingleValue,$SimulatedInterDeletionDistances); 
 				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 				
-				$distribution->{$selftest}--;
-		 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
-				$distribution->{$selftest}++;
+				my $SelfTestIndex = pop(@SelfTestIndicies);
+				
+				my $SelfTest = $SimulatedInterDeletionDistances->[$SelfTestIndex];
+				
+				print join('-',@$InterDeletionDistances) if($SelfTest ~~ undef);
+				die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".scalar(@$InterDeletionDistances)." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
+
+		 		my $SelfTestPosteriorQuantile = calculateContinuousPosteriorQuantile($SelfTest,$SimulatedInterDeletionDistances); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 	
 				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
 				
@@ -358,7 +363,6 @@ foreach my $fork (0 .. $NoOfForks-1){
 				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
 			}
 			
-			#The output value 'Score:' is the probability, givn the model, that there are more genomes in the simulation than in reality. Also called the 'Posterior quantile'
 		}
 
 }

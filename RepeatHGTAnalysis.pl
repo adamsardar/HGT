@@ -138,14 +138,14 @@ foreach my $DomainArchitecture (@DomainArchitectures){
 	my $Distribution = {};
 	map{$Distribution->{$_}++}@RawResults;
 	
-	my $PosteriorQuantile = calculateJulianStylePosteriorQuantile($ObservedNumberOfGenomes,$Distribution,$Iterations+1,$CladeSize);
+	my $PosteriorQuantile = calculatePosteriorQuantile($ObservedNumberOfGenomes,$Distribution,$Iterations+1,$CladeSize);
 	#Iterations plus one is a consequence of the fact that our observed value is being treated as though it were a 'simulated' value
 	
 	#$SelftestValue +=1 if ($SelftestValue == 0);
 	#This is an error for previous scipts, left in here so that we can switch it on the easily demonstrate the error source
 	
 	$Distribution->{$SelftestValue}--;
-	my $SelfTestQuantile = calculateJulianStylePosteriorQuantile($SelftestValue,$Distribution,$Iterations,$CladeSize);
+	my $SelfTestQuantile = calculatePosteriorQuantile($SelftestValue,$Distribution,$Iterations,$CladeSize);
 	
 	#Print scores to files
 	
