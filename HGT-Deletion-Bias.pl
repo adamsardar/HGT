@@ -264,6 +264,8 @@ foreach my $fork (0 .. $NoOfForks-1){
 	open RAWSIM, ">$SIMULATIONSPATH/SimulationData".$$.".dat" or die "Can't open file $SIMULATIONSPATH/SimulationData".$!;		
 	open SELFTEST, ">$SELFTERSTPATH/SelfTestData".$$.".dat" or die "Can't open file $SELFTERSTPATH/SelfTestData".$!;
 	
+	my $count=0;
+	
 	foreach my $DomArch (@$ArchsListRef){
 	
 	my ($CladeGenomes,$NodesObserved);
@@ -359,10 +361,17 @@ foreach my $fork (0 .. $NoOfForks-1){
 	
 				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
 				
+				print join('-',@$SimulatedInterDeletionDistances);
+				print "\n";
+				print "Selft Test:".$SelfTest."\n";
+				print $PosteriorQuantileScore."\n";
+				
 				print OUT "$DomArch:$PosteriorQuantileScore\n";
 				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
 			}
-			
+
+die if $count++ > 10;
+
 		}
 
 }
