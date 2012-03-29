@@ -341,13 +341,19 @@ foreach my $fork (0 .. $NoOfForks-1){
 		
 		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
 		
+		
 		my @SelfTestIndicies = random_uniform_integer(scalar(@$InterDeletionDistances),0,(scalar(@$SimulatedInterDeletionDistances)-1));
+		
+		my $DistributionHash ={};
+		map{$DistributionHash->{$_}++}@$SimulatedInterDeletionDistances;
+		
+		#Set up the @$SimulatedInterDeletionDistances as a has. Easy way to store the distribution
 		
 			foreach my $DeletionDistanceIndex (0 .. scalar(@$InterDeletionDistances)-1){
 				
 				my $SingleValue = $$InterDeletionDistances[$DeletionDistanceIndex];
 				
-				my $PosteriorQuantileScore = calculateContinuousPosteriorQuantile($SingleValue,$SimulatedInterDeletionDistances); 
+				my $PosteriorQuantileScore = calculateHashContinuousPosteriorQuantile($SingleValue,$DistributionHash,$Iterations); 
 				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 				
 				my $SelfTestIndex = pop(@SelfTestIndicies);
@@ -357,20 +363,14 @@ foreach my $fork (0 .. $NoOfForks-1){
 				print join('-',@$InterDeletionDistances) if($SelfTest ~~ undef);
 				die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".scalar(@$InterDeletionDistances)." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
 
-		 		my $SelfTestPosteriorQuantile = calculateContinuousPosteriorQuantile($SelfTest,$SimulatedInterDeletionDistances); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+		 		my $SelfTestPosteriorQuantile = calculateHashContinuousPosteriorQuantile($SelfTest,$DistributionHash,$Iterations); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 	
 				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
-				
-				print join('-',@$SimulatedInterDeletionDistances);
-				print "\n";
-				print "Selft Test:".$SelfTest."\n";
-				print $PosteriorQuantileScore."\n";
 				
 				print OUT "$DomArch:$PosteriorQuantileScore\n";
 				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
 			}
 
-die if $count++ > 10;
 
 		}
 

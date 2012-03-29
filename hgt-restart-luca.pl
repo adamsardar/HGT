@@ -1,5 +1,4 @@
-#! /usr/bin/perl -w
-# Strict Pragmas
+#! /usr/bin/perl
 
 =head1 NAME
 
@@ -358,6 +357,10 @@ foreach my $fork (0 .. $NoOfForks-1){
 		my $CladeSize = scalar(@$CladeGenomes);
 	
 		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
+
+		#Prepare a hash of observations
+		
+		
 
 			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
