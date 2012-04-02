@@ -31,7 +31,7 @@ Copyright 2012 Gough Group, University of Bristol.
 #----------------------------------------------------------------------------------------------------------------
 use strict;
 use warnings;
-#use diagnostics;
+use diagnostics;
 
 # Add Local Library to LibPath
 #----------------------------------------------------------------------------------------------------------------
