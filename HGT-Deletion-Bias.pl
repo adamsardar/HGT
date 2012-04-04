@@ -362,6 +362,8 @@ foreach my $fork (0 .. $NoOfForks-1){
 				
 				print join('-',@$InterDeletionDistances) if($SelfTest ~~ undef);
 				die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".scalar(@$InterDeletionDistances)." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
+				#Error catching
+
 
 		 		my $SelfTestPosteriorQuantile = calculateHashContinuousPosteriorQuantile($SelfTest,$DistributionHash,$Iterations); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 	
@@ -370,10 +372,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 				print OUT "$DomArch:$PosteriorQuantileScore\n";
 				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
 			}
-
-
 		}
-
 }
 
 	close OUT;
