@@ -1,5 +1,5 @@
-#! /usr/bin/perl -w
-# Strict Pragmas
+#!/usr/bin/env perl
+
 
 =head1 NAME
 
@@ -29,9 +29,10 @@ Copyright 2012 Gough Group, University of Bristol.
 =cut
 
 #----------------------------------------------------------------------------------------------------------------
+# Strict Pragmas
 use strict;
 use warnings;
-use diagnostics;
+#use diagnostics;
 
 # Add Local Library to LibPath
 #----------------------------------------------------------------------------------------------------------------
