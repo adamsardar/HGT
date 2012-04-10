@@ -78,7 +78,7 @@ my $test = 'n';
 my $FalseNegativeRate = 0.00;
 my $completes = 'n'; #A flag to specify whether or not to include architectures including _gap_ assignmenets
 my $Iterations = 500;
-my $model = 'poisson';
+my $model = 'corrpoisson';
 my $store = 0;
 my $check = 'y'; #Perform a sanity check on the tree? This should be 'y' unless under extreme circumstances
 
