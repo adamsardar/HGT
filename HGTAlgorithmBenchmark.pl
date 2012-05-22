@@ -130,8 +130,8 @@ $tic = Time::HiRes::time;
 
 #my $distributionB = {};
 #map{$distributionB->{$_}++}random_uniform_integer($Iterations,0,$CladeSize);
-my ($SelftestValueB,$distributionB,$RawResultsB,$DeletionsNumberDistributionB) = RandomModelCorrPoisson($root,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-
+my ($SelftestValueB,$distributionB,$RawResultsB,$DeletionsNumberDistributionB) = RandomModelCorrPoissonOptimised($root,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+#my ($SelftestValueB,$distributionB,$RawResultsB,$DeletionsNumberDistributionB) = RandomModelCorrPoisson($root,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
 $toc = Time::HiRes::time;
 
 print "Done optimised Poisson ".($toc-$tic)."\n";
