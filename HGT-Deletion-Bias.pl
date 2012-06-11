@@ -201,6 +201,7 @@ if($completes eq 'n'){
 							AND $lensupraquery AND comb_index.id != 1 
 							AND comb_index.comb NOT LIKE '%_gap_%';"); #comb_id =1 is '_gap_'
 }else{
+	
 	die "Inappropriate flag for whether or not to include architectures containing _gap_";
 }
 
@@ -269,7 +270,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 	
 	foreach my $DomArch (@$ArchsListRef){
 	
-	my ($CladeGenomes,$NodesObserved);
+		my ($CladeGenomes,$NodesObserved);
 		
 		my $NodeName2NodeID = {};
 		map{$NodeName2NodeID->{$TreeCacheHash->{$_}{'node_id'}}= $_ }@TreeGenomesNodeIDs; #Generate a lookup table of leaf_name 2 node_id
@@ -291,7 +292,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 
 			 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
 			 	
-					($dels, $time, $InterDeletionDistances) = DeletedJulianDetailed($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$DomArch); # $MRCA,$dels,$time,$HashOfGenomesObserved,$TreeCacheHash,$DomArch - calculate deltion rate over tree	
+					($dels,$time,$InterDeletionDistances) = DeletedJulianDetailed($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$DomArch); # $MRCA,$dels,$time,$HashOfGenomesObserved,$TreeCacheHash,$DomArch - calculate deltion rate over tree	
 					
 				}else{
 					
@@ -320,6 +321,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 					($SimulatedInterDeletionDistances) = RandomModelCorrPoissonDeletionDetailed($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
 
 				}else{
+					
 					die "No appropriate model selected";
 				}
 			
@@ -342,19 +344,28 @@ foreach my $fork (0 .. $NoOfForks-1){
 		
 		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
 		
+		my $NumberDistances = scalar(@$InterDeletionDistances);
+		my $NumberSimulatedDistances = scalar(@$SimulatedInterDeletionDistances);
 		
-		my @SelfTestIndicies = random_uniform_integer(scalar(@$InterDeletionDistances),0,(scalar(@$SimulatedInterDeletionDistances)-1));
+		my @SelfTestIndicies = random_uniform_integer($NumberDistances,0,($NumberSimulatedDistances-1));
+		#Create an array of indicies to use as self tests
 		
 		my $DistributionHash ={};
 		map{$DistributionHash->{$_}++}@$SimulatedInterDeletionDistances;
 		
 		#Set up the @$SimulatedInterDeletionDistances as a has. Easy way to store the distribution
+			
+		my $NumberOfSimulations=sum(values(%$DistributionHash));
 		
-			foreach my $DeletionDistanceIndex (0 .. scalar(@$InterDeletionDistances)-1){
+		my $SingleValues = [];
+		my $scores = [];
+		my $selftest=[];
+		
+		foreach my $SingleValue (@$InterDeletionDistances){
 				
-				my $SingleValue = $$InterDeletionDistances[$DeletionDistanceIndex];
+				push(@$SingleValues,$SingleValue);
 				
-				my $PosteriorQuantileScore = calculateHashContinuousPosteriorQuantile($SingleValue,$DistributionHash,$Iterations); 
+				my $PosteriorQuantileScore = calculateHashContinuousPosteriorQuantile($SingleValue,$DistributionHash,$NumberOfSimulations); 
 				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 				
 				my $SelfTestIndex = pop(@SelfTestIndicies);
@@ -362,17 +373,25 @@ foreach my $fork (0 .. $NoOfForks-1){
 				my $SelfTest = $SimulatedInterDeletionDistances->[$SelfTestIndex];
 				
 				print join('-',@$InterDeletionDistances) if($SelfTest ~~ undef);
-				die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".scalar(@$InterDeletionDistances)." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
+				die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".$NumberDistances." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
 				#Error catching
 
-
-		 		my $SelfTestPosteriorQuantile = calculateHashContinuousPosteriorQuantile($SelfTest,$DistributionHash,$Iterations); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+		 		my $SelfTestPosteriorQuantile = calculateHashContinuousPosteriorQuantile($SelfTest,$DistributionHash,$NumberOfSimulations); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 	
 				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
 				
 				print OUT "$DomArch:$PosteriorQuantileScore\n";
 				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
+				
+				push(@$scores,$PosteriorQuantileScore);
+				push(@$selftest,$SelfTestPosteriorQuantile);
 			}
+		
+		#my $dumped = {'SingleVals' =>  $SingleValues, 'ObservedDists' => $InterDeletionDistances,'scores' => $scores, 'selftest' => $selftest, 'Simulateddistances' => $SimulatedInterDeletionDistances};
+		
+		
+	#	EasyDump("dumped$$.dump",$dumped);
+	#	die "Here\n";
 		}
 }
 
@@ -380,7 +399,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 	close RAWSIM;
 	close SELFTEST;
 	
-$pm->finish if ($maxProcs); # Terminates the child process
+$pm->finish if($maxProcs); # Terminates the child process
 
 
 }
