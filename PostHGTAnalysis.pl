@@ -90,8 +90,6 @@ mkdir("./$OutputDir");
 #Read in Del Rates
 my $DomArch2DelsHash = {};
 
-
-
 open DELS, "<$DelRatesFile" or warn "No Deletions File:\n\n".$!.$?;
 
 while (my $line = <DELS>){
