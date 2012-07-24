@@ -140,7 +140,7 @@ print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
 print STDERR "Model used: $model\n";
-print STDERR "Cores used: $maxProcs\n";
+print STDERR "Threads used: $maxProcs\n";
 print STDERR "Treefile: $TreeFile \n";
 print STDERR "Complete Architectures?: $completes\n";
 print STDERR "Command line invocation: $0 \n";
@@ -149,7 +149,7 @@ print RUNINFO "No of iterations per run is: $Iterations\n";
 print RUNINFO "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n";
 print RUNINFO "Model used: $model\n";
-print RUNINFO "Cores used: $maxProcs\n";
+print RUNINFO "Threads used: $maxProcs\n";
 print RUNINFO "Treefile: $TreeFile \n";
 print RUNINFO "Complete Architectures?: $completes\n\n\n";
 print RUNINFO "Command line invocation: $0 \n";
@@ -300,6 +300,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 				}
 				
 			$deletion_rate = $dels/$time;
+			#Average deletion rate
 			
 		}else{
 			
@@ -342,56 +343,53 @@ foreach my $fork (0 .. $NoOfForks-1){
 		my $CladeSize = scalar(@$CladeGenomes);
 		
 		
-		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
-		
-		my $NumberDistances = scalar(@$InterDeletionDistances);
-		my $NumberSimulatedDistances = scalar(@$SimulatedInterDeletionDistances);
-		
-		my @SelfTestIndicies = random_uniform_integer($NumberDistances,0,($NumberSimulatedDistances-1));
-		#Create an array of indicies to use as self tests
-		
-		my $DistributionHash ={};
-		map{$DistributionHash->{$_}++}@$SimulatedInterDeletionDistances;
-		
-		#Set up the @$SimulatedInterDeletionDistances as a has. Easy way to store the distribution
+		unless($deletion_rate == 0){ #Essentially, unless the architecture is present in all members of a clade beneath its LCA
 			
-		my $NumberOfSimulations=sum(values(%$DistributionHash));
-		
-		my $SingleValues = [];
-		my $scores = [];
-		my $selftest=[];
-		
-		foreach my $SingleValue (@$InterDeletionDistances){
-				
-				push(@$SingleValues,$SingleValue);
-				
-				my $PosteriorQuantileScore = calculateHashContinuousPosteriorQuantile($SingleValue,$DistributionHash,$NumberOfSimulations); 
-				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
-				
-				my $SelfTestIndex = pop(@SelfTestIndicies);
-				
-				my $SelfTest = $SimulatedInterDeletionDistances->[$SelfTestIndex];
-				
-				print join('-',@$InterDeletionDistances) if($SelfTest ~~ undef);
-				die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".$NumberDistances." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
-				#Error catching
-
-		 		my $SelfTestPosteriorQuantile = calculateHashContinuousPosteriorQuantile($SelfTest,$DistributionHash,$NumberOfSimulations); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+			my $NumberDistances = scalar(@$InterDeletionDistances); # The number of observed pairs between deletion points
+			my $NumberSimulatedDistances = scalar(@$SimulatedInterDeletionDistances); # The of simulated pairs between deletion points
+			
+			my @SelfTestIndicies = random_uniform_integer($NumberDistances,0,($NumberSimulatedDistances-1));
+			#Create an array of indicies to use as self tests, equal to the size of the number of observed distances
+			
+			my $NumberOfSimulations =0;
+			
+			my $DistributionHash ={};
+			map{$DistributionHash->{$_}++; $NumberOfSimulations++ }(@$SimulatedInterDeletionDistances);			
+			#Set up the @$SimulatedInterDeletionDistances as a has. Easy way to store the distribution
+			
+			my $SingleValues = [];
+			my $scores = [];
+			my $selftest=[];
+			
+			foreach my $SingleValue (@$InterDeletionDistances){
+					
+					push(@$SingleValues,$SingleValue);
+					
+					#print STDERR "Entering Loop \n";
+					
+					my $PosteriorQuantileScore = calculateHashContinuousPosteriorQuantile($SingleValue,$DistributionHash,$NumberOfSimulations); 
+					#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
+					
+					my $SelfTestIndex = pop(@SelfTestIndicies);
+					
+					my $SelfTest = @$SimulatedInterDeletionDistances[$SelfTestIndex];
+					
+					print join('-',@$InterDeletionDistances) if($SelfTest ~~ undef);
+					die "\n Selft Tes:".$SelfTest."Size of InterDeletionDistances:".$NumberDistances." Sim index:".$SelfTestIndex."\n" if($SelfTest ~~ undef);
+					#Error catching
 	
-				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
+			 		my $SelfTestPosteriorQuantile = calculateHashContinuousPosteriorQuantile($SelfTest,$DistributionHash,$NumberOfSimulations); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 				
-				print OUT "$DomArch:$PosteriorQuantileScore\n";
-				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
-				
-				push(@$scores,$PosteriorQuantileScore);
-				push(@$selftest,$SelfTestPosteriorQuantile);
-			}
-		
-		#my $dumped = {'SingleVals' =>  $SingleValues, 'ObservedDists' => $InterDeletionDistances,'scores' => $scores, 'selftest' => $selftest, 'Simulateddistances' => $SimulatedInterDeletionDistances};
-		
-		
-	#	EasyDump("dumped$$.dump",$dumped);
-	#	die "Here\n";
+					#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
+					
+					print OUT "$DomArch:$PosteriorQuantileScore\n";
+					print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
+					
+					push(@$scores,$PosteriorQuantileScore);
+					push(@$selftest,$SelfTestPosteriorQuantile);
+				}
+			
+			#my $dumped = {'SingleVals' =>  $SingleValues, 'ObservedDists' => $InterDeletionDistances,'scores' => $scores, 'selftest' => $selftest, 'Simulateddistances' => $SimulatedInterDeletionDistances};
 		}
 }
 
@@ -414,8 +412,8 @@ print STDERR "Everybody is out of the pool!\n";
 `cat $SELFTERSTPATH/* > ./SelfTest-RawData.colsv`;
 
 
-`Hist.py -f "./$OutputFilename-RawData.colsv" -o $OutputFilename.png -t "Histogram of Cumulative p-Values" -x "P(Nm < nr)" -y "Frequency"	` ;
-`Hist.py -f "./SelfTest-RawData.colsv" -o SelfTest.png -t "Histogram of Self-Test Cumulative p-Values" -x "P(Nm < nm)" -y "Frequency"	` ;
+`Hist.py -f "./$OutputFilename-RawData.colsv" -o $OutputFilename.png -t "Histogram of Cumulative p-Values" -x "P(Nm < nr)" -y "Frequency"` ;
+`Hist.py -f "./SelfTest-RawData.colsv" -o SelfTest.png -t "Histogram of Self-Test Cumulative p-Values" -x "P(Nm < nm)" -y "Frequency"` ;
 
 # Plot a couple of histograms for easy inspection of the data
 
