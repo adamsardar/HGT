@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#! /usr/bin/env perl
 
 die "DO NOT use this script. It is old, not written by me and no longer maintained. It is kept here purely for legacy reasons!\n\n";
 

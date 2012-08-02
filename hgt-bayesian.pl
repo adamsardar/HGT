@@ -1,8 +1,7 @@
-#! /usr/bin/perl -w
-# Strict Pragmas
+#! /usr/bin/env perl
+
 #----------------------------------------------------------------------------------------------------------------
-use strict;
-use warnings;
+use Modern::Perl;
 #use diagnostics;
 
 # Add Local Library to LibPath

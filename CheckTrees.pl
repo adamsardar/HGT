@@ -1,8 +1,8 @@
-#! /usr/bin/perl -w
+#! /usr/bin/env perl
 
 =head1 NAME
 
-I<.pl>
+CheckTreesI<.pl>
 
 =head1 USAGE
 
@@ -10,7 +10,7 @@ I<.pl>
 
 =head1 SYNOPSIS
 
-A script to...
+A old script of Julians to check input trees. This might well get deleted form the repo.
 
 =head1 AUTHOR
 
@@ -26,8 +26,7 @@ Copyright 2010 Gough Group, University of Bristol.
 
 # Strict Pragmas
 #----------------------------------------------------------------------------------------------------------------
-use strict;
-use warnings;
+use Modern::Perl;
 #use diagnostics;
 
 # Add Local Library to LibPath

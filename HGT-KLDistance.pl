@@ -1,4 +1,4 @@
-#! /usr/bin/perl -w
+#! /usr/bin/env perl
 
 =head1 NAME
 
@@ -29,8 +29,7 @@ Copyright 2011 Gough Group, University of Bristol.
 
 # Strict Pragmas
 #----------------------------------------------------------------------------------------------------------------
-use strict;
-use warnings;
+use Modern::Perl;
 #use diagnostics;
 
 # Add Local Library to LibPath

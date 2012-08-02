@@ -1,6 +1,5 @@
 #!/usr/bin/env perl
 
-
 =head1 NAME
 
 HGT-Deletion-Bias<.pl>
@@ -29,10 +28,9 @@ Copyright 2012 Gough Group, University of Bristol.
 =cut
 
 #----------------------------------------------------------------------------------------------------------------
-# Strict Pragmas
-use strict;
-use warnings;
+use Modern::Perl;
 #use diagnostics;
+
 
 # Add Local Library to LibPath
 #----------------------------------------------------------------------------------------------------------------

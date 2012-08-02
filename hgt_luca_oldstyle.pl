@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#! /usr/bin/env perl
 
 use lib "$ENV{HOME}/scripts/lib/";
 use lib "$ENV{HOME}/scripts/lib/Oates/lib";

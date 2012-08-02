@@ -1,9 +1,8 @@
-#! /usr/bin/perl -w
-# Strict Pragmas
+#! /usr/bin/env perl
 
 =head1 NAME
 
-ABC-HGT<.pl>
+ABC-HGTI<.pl>
 
 =head1 USAGE
 
@@ -31,8 +30,7 @@ Copyright 2011 Gough Group, University of Bristol.
 =cut
 
 #----------------------------------------------------------------------------------------------------------------
-use strict;
-use warnings;
+use Modern::Perl;
 #use diagnostics;
 
 # Add Local Library to LibPath

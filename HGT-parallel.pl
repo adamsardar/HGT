@@ -28,8 +28,7 @@ Copyright 2011 Gough Group, University of Bristol.
 =cut
 
 #----------------------------------------------------------------------------------------------------------------
-use strict;
-use warnings;
+use Modern::Perl;
 #use diagnostics;
 
 # Add Local Library to LibPath

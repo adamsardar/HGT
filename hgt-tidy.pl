@@ -1,8 +1,9 @@
-#!/usr/bin/perl -w
+#! /usr/bin/env perl
 
 use lib "$ENV{HOME}/workspace/Oates/lib/";
 
 use strict;
+use warnings;
 use DBI;
 use Supfam::SQLFunc;
 
