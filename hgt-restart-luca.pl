@@ -1,4 +1,4 @@
-#! /usr/bin/perl
+#! /usr/bin/env perl
 
 =head1 NAME
 
@@ -202,8 +202,19 @@ if($completes eq 'n'){
 							FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
 							WHERE len_supra.ascomb_prot_number > 0 
 							AND $lensupraquery AND comb_index.id != 1 
-							AND comb_index.comb NOT LIKE '%_gap_%';"); #comb_id =1 is '_gap_'
+							AND comb_index.comb NOT LIKE '%_gap_%';"); 
+							#select only architectures that are fully assigned (don't contain _gap_) comb_id =1 is '_gap_'
+}elsif($completes eq 'nc'){
+
+	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
+							FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
+							WHERE len_supra.ascomb_prot_number > 0 
+							AND $lensupraquery AND comb_index.id != 1 
+							AND comb_index.comb NOT LIKE '_gap_%' 
+							AND comb_index.comb NOT LIKE '%_gap_';");
+							#select only architectures that are fully assigned (don't contain _gap_) comb_id =1 is '_gap_'
 }else{
+	
 	die "Inappropriate flag for whether or not to include architectures containing _gap_";
 }
 
