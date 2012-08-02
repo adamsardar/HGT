@@ -2,14 +2,15 @@
 
 =head1 NAME
 
-hgt-restart-luca<.pl>
+HGT-parallel<.pl>
 
 =head1 USAGE
 
- hgt-restart-luca.pl [options -v,-d,-h] <ARGS>
- 
- Example usage: 
- hgt-restart-luca.pl --check n -itr 5000 -p nocores -i treefile -o output
+HGT-parallel.pl [options -v,-d,-h] <ARGS>
+
+Example usage: 
+
+HGT-parallel.pl --check n -itr 5000 -p nocores -i treefile -o output
 
 =head1 SYNOPSIS
 
@@ -70,6 +71,7 @@ my $debug;   #As above for debug
 my $help;    #Same again but this time should we output the POD man page defined after __END__
 my $OutputFilename = 'HGTResults';
 my $TreeFile;
+my $SpeciesAlignmentFile;
 my $maxProcs = 0;
 my $test = 'n';
 my $FalseNegativeRate = 0.00;
@@ -78,6 +80,7 @@ my $Iterations = 500;
 my $model = 'poisson';
 my $store = 0;
 my $check = 'y'; #Perform a sanity check on the tree? This should be 'y' unless under extreme circumstances
+my $dumpinput;
 
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
@@ -85,6 +88,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "help|h!" => \$help,
            "output|o:s" => \$OutputFilename,
            "tree|i:s" => \$TreeFile,
+           "hash|ha:s" => \$SpeciesAlignmentFile,
            "processor_cores|p:i" => \$maxProcs,
            "self_test|st:s" => \$test,
            "completes|comp:s" => \$completes,
@@ -93,6 +97,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "model|m:s" => \$model,
            "store|s:i" => \$store,
            "check|c:s" => \$check,
+           "dumpinout|di!" => \$dumpinput,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
 #Print out some help if it was asked for or if no arguments were given.
@@ -100,8 +105,6 @@ pod2usage(-exitstatus => 0, -verbose => 2) if $help;
 
 die "Inappropriate model chosen\n" unless ($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson');
 #---------------------------------------
-
-my $dbh = dbConnect();
 
 `mkdir /dev/shm/temp` unless (-d '/dev/shm/temp');
 my $RAMDISKPATH = '/dev/shm/temp';
@@ -120,24 +123,12 @@ my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 
 #Produce a tree hash, either from SQL or a provided treefile
 my ($root,$TreeCacheHash);
-
-if($TreeFile){
+my $DomCombGenomeHash = {};
 	
-	open TREE, "<$TreeFile" or die $!.$?;
-	my $TreeString = <TREE>;
-	close TREE;
-
-	($root,$TreeCacheHash) = BuildTreeCacheHash($TreeString);
-
-}else{
-	
-	die "no tree file or SQL tree node or tree file provided as tree to calculate HGT upon\n";	
-}
 
 open RUNINFO, ">HGT_info.$OutputFilename";
 
 print STDERR "No of iterations per run is: $Iterations\n";
-print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
 print STDERR "Model used: $model\n";
 print STDERR "Cores used: $maxProcs\n";
@@ -146,13 +137,90 @@ print STDERR "Complete Architectures?: $completes\n";
 print STDERR "Command line invocation: $0 \n";
 
 print RUNINFO "No of iterations per run is: $Iterations\n";
-print RUNINFO "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
+
 print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n";
 print RUNINFO "Model used: $model\n";
 print RUNINFO "Cores used: $maxProcs\n";
 print RUNINFO "Treefile: $TreeFile \n";
 print RUNINFO "Complete Architectures?: $completes\n\n\n";
 print RUNINFO "Command line invocation: $0 \n";
+
+if($TreeFile){
+	
+	open TREE, "<$TreeFile" or die $!.$?;
+	my $TreeString = <TREE>;
+	close TREE;
+	
+	($root,$TreeCacheHash) = BuildTreeCacheHash($TreeString);
+
+	my $dbh = dbConnect();
+	my $sth;
+	
+	my @TreeGenomes = map{$TreeCacheHash->{$_}{'node_id'}}@{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
+	my @TreeGenomesNodeIDs = @{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
+	
+	#---------Get a list of domain archs present in tree----------------------
+	my $lensupraquery = join ("' or len_supra.genome='", @TreeGenomes); $lensupraquery = "(len_supra.genome='$lensupraquery')";# An ugly way to make the query run, but perl DBI only allows for a single value to occupy a wildcard
+
+	my $tic = Time::HiRes::time;
+	
+	if($completes eq 'n'){
+		
+		$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
+							FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
+							WHERE len_supra.ascomb_prot_number > 0 
+							AND $lensupraquery 
+							AND comb_index.id != 1;"); #comb_id =1 is '_gap_'
+			
+	}elsif($completes eq 'y'){
+	
+		$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
+								FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
+								WHERE len_supra.ascomb_prot_number > 0 
+								AND $lensupraquery AND comb_index.id != 1 
+								AND comb_index.comb NOT LIKE '%_gap_%';"); 
+								#select only architectures that are fully assigned (don't contain _gap_) comb_id =1 is '_gap_'
+	}elsif($completes eq 'nc'){
+	
+		$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
+								FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
+								WHERE len_supra.ascomb_prot_number > 0 
+								AND $lensupraquery AND comb_index.id != 1 
+								AND comb_index.comb NOT LIKE '_gap_%' 
+								AND comb_index.comb NOT LIKE '%_gap_';");
+								#select only architectures that are fully assigned (don't contain _gap_) comb_id =1 is '_gap_'
+	}else{
+		
+		die "Inappropriate flag for whether or not to include architectures containing _gap_";
+	}
+	
+	$sth->execute();
+	
+	while (my ($genomereturned,$combreturned) = $sth->fetchrow_array() ){
+	
+		die "$combreturned\n" if($combreturned =~ m/_gap_/ && $completes eq 'y'); # sanity check, will likely remove from final version of script
+	
+		$DomCombGenomeHash->{$combreturned} = {} unless (exists($DomCombGenomeHash->{$combreturned}));
+		$DomCombGenomeHash->{$combreturned}{$genomereturned}++;
+	}
+	
+	my $toc = Time::HiRes::time;
+	print STDERR "Time taken to build the Dom Arch hash:".($toc-$tic)."seconds\n";
+	
+	dbDisconnect($dbh);
+
+}elsif($SpeciesAlignmentFile){
+	
+	my $SpecieData = EasyUnDump($SpeciesAlignmentFile);
+	($root,$TreeCacheHash,$DomCombGenomeHash) = @$SpecieData;
+	
+}else{
+	
+	die "no tree file provided as tree to calculate HGT upon\n";	
+}
+
+print STDERR "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
+print RUNINFO "Number of genomes in tree: ".scalar(@{$TreeCacheHash->{$root}{'Clade_Leaves'}})."\n";
 
 close RUNINFO;
 
@@ -162,12 +230,17 @@ print TREEINFO $NewickTree."\n";
 close TREEINFO;
 # Dump tree into an output file
 
+
+if($dumpinput){
+	
+	EasyDump('input_spcies_data.dat',[$root,$TreeCacheHash,$DomCombGenomeHash]);
+}
+
 #--Check Input Tree------------------------
-
-
+my $dbh = dbConnect();
+				
 my @TreeGenomes = map{$TreeCacheHash->{$_}{'node_id'}}@{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
 my @TreeGenomesNodeIDs = @{$TreeCacheHash->{$root}{'Clade_Leaves'}}; # All of the genomes (leaves) of the tree
-
 
 my $genquery = join ("' or genome.genome='", @TreeGenomes); $genquery = "(genome.genome='$genquery')";# An ugly way to make the query run
 
@@ -178,63 +251,16 @@ while (my @query = $sth->fetchrow_array() ) {
 		
 	die "Genome: $query[0] is in the tree but should not be!\n"  unless ($query[0] eq "y" && $query[1] eq '' || $check eq 'n');
 } #A brief bit of error checking - make sure that the tree doesn't contain any unwanted genoemes (e.g strains)
-			
-	#---------Get a list of domain archs present in tree----------------------
 
-my $lensupraquery = join ("' or len_supra.genome='", @TreeGenomes); $lensupraquery = "(len_supra.genome='$lensupraquery')";# An ugly way to make the query run, but perl DBI only allows for a single value to occupy a wildcard
+dbDisconnect($dbh);
+#--------------------------
+#Consider moving the above code segement into its own subroutine in Supfam::TreeFuncsNonBP
 
-my $DomCombGenomeHash = {};
-
-my $tic = Time::HiRes::time;
-
-if($completes eq 'n'){
-	
-	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
-						FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
-						WHERE len_supra.ascomb_prot_number > 0 
-						AND $lensupraquery 
-						AND comb_index.id != 1;"); #comb_id =1 is '_gap_'
-		
-}elsif($completes eq 'y'){
-
-	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
-							FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
-							WHERE len_supra.ascomb_prot_number > 0 
-							AND $lensupraquery AND comb_index.id != 1 
-							AND comb_index.comb NOT LIKE '%_gap_%';"); 
-							#select only architectures that are fully assigned (don't contain _gap_) comb_id =1 is '_gap_'
-}elsif($completes eq 'nc'){
-
-	$sth = $dbh->prepare("SELECT DISTINCT len_supra.genome,comb_index.comb 
-							FROM len_supra JOIN comb_index ON len_supra.supra_id = comb_index.id 
-							WHERE len_supra.ascomb_prot_number > 0 
-							AND $lensupraquery AND comb_index.id != 1 
-							AND comb_index.comb NOT LIKE '_gap_%' 
-							AND comb_index.comb NOT LIKE '%_gap_';");
-							#select only architectures that are fully assigned (don't contain _gap_) comb_id =1 is '_gap_'
-}else{
-	
-	die "Inappropriate flag for whether or not to include architectures containing _gap_";
-}
-
-$sth->execute();
-
-while (my ($genomereturned,$combreturned) = $sth->fetchrow_array() ){
-
-	die "$combreturned\n" if($combreturned =~ m/_gap_/ && $completes eq 'y'); # sanity check, will likely remove from final version of script
-
-	$DomCombGenomeHash->{$combreturned} = {} unless (exists($DomCombGenomeHash->{$combreturned}));
-	$DomCombGenomeHash->{$combreturned}{$genomereturned}++;
-}
-
-my $toc = Time::HiRes::time;
-print STDERR "Time taken to build the Dom Arch hash:".($toc-$tic)."seconds\n";
 
 my $DomArchs = [];
 @$DomArchs = keys(%$DomCombGenomeHash);
 #These are all the unique domain architectures
 
-dbDisconnect($dbh);
 
 my $NoOfForks = $maxProcs;
 $NoOfForks = 1 unless($maxProcs);
