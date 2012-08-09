@@ -81,6 +81,8 @@ my $model = 'poisson';
 my $store = 0;
 my $check = 'y'; #Perform a sanity check on the tree? This should be 'y' unless under extreme circumstances
 my $dumpinput;
+my $fullsims; #flag for performing full posterior quantile simulations
+my $singlesim;
 
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
@@ -98,6 +100,8 @@ GetOptions("verbose|v!"  => \$verbose,
            "store|s:i" => \$store,
            "check|c:s" => \$check,
            "dumpinout|di!" => \$dumpinput,
+           "simulations!" => \$fullsims,
+           "singlesim!" => \$singlesim,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
 #Print out some help if it was asked for or if no arguments were given.
@@ -124,7 +128,6 @@ my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 #Produce a tree hash, either from SQL or a provided treefile
 my ($root,$TreeCacheHash);
 my $DomCombGenomeHash = {};
-	
 
 open RUNINFO, ">HGT_info.$OutputFilename";
 
@@ -132,7 +135,6 @@ print STDERR "No of iterations per run is: $Iterations\n";
 print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
 print STDERR "Model used: $model\n";
 print STDERR "Cores used: $maxProcs\n";
-print STDERR "Treefile: $TreeFile \n";
 print STDERR "Complete Architectures?: $completes\n";
 print STDERR "Command line invocation: $0 \n";
 
@@ -141,7 +143,6 @@ print RUNINFO "No of iterations per run is: $Iterations\n";
 print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n";
 print RUNINFO "Model used: $model\n";
 print RUNINFO "Cores used: $maxProcs\n";
-print RUNINFO "Treefile: $TreeFile \n";
 print RUNINFO "Complete Architectures?: $completes\n\n\n";
 print RUNINFO "Command line invocation: $0 \n";
 
@@ -211,6 +212,8 @@ if($TreeFile){
 
 }elsif($SpeciesAlignmentFile){
 	
+	print STDERR "Using species trait file input rather than read in values from SUPERFAMILY.\n";
+	
 	my $SpecieData = EasyUnDump($SpeciesAlignmentFile);
 	($root,$TreeCacheHash,$DomCombGenomeHash) = @$SpecieData;
 	
@@ -233,6 +236,7 @@ close TREEINFO;
 
 if($dumpinput){
 	
+	print STDERR "Creating a dump of input data\n";
 	EasyDump('input_spcies_data.dat',[$root,$TreeCacheHash,$DomCombGenomeHash]);
 }
 
@@ -261,59 +265,27 @@ my $DomArchs = [];
 @$DomArchs = keys(%$DomCombGenomeHash);
 #These are all the unique domain architectures
 
-
-my $NoOfForks = $maxProcs;
-$NoOfForks = 1 unless($maxProcs);
-
-my $remainder = scalar(@$DomArchs)%$NoOfForks;
-my $binsize = (scalar(@$DomArchs)-$remainder)/$NoOfForks;
-
-my $ForkJobsHash = {};
-
-for my $i (0 .. $NoOfForks-1){
-	
-	my @ForkJobList = @{$DomArchs}[$i*$binsize .. ($i+1)*$binsize-1];
-	$ForkJobsHash->{$i}=\@ForkJobList;
-}
-#Create lists of jobs to be done by the relative forks
-
-push(@{$ForkJobsHash->{0}},@{$DomArchs}[($NoOfForks)*$binsize .. ($NoOfForks)*$binsize+$remainder-1]) if ($remainder);
-
-print STDERR "No Dom Archs in job batch is approx: ".$binsize."\n";
+print STDERR "Total No Of Dom Archs: ".@$DomArchs."\n";
 
 #----------------------------------------------------
 
 
 #Main-loop-------------------------------------------
 
-print STDERR "Total No Of Dom Archs: ".@$DomArchs."\n";
+#Single simultion for each domain architecture
 
-my $pm = new Parallel::ForkManager($maxProcs) if ($maxProcs);# Initialise
+if($singlesim){
 
-foreach my $fork (0 .. $NoOfForks-1){
+my $SingleSimDomCombGenomeHash = {};
+
+foreach my $domainarchitecture (@$DomArchs){
 	
-	my $ArchsListRef = $ForkJobsHash->{$fork};
-		
-		
-	# Forks and returns the pid for the child:
-	if ($maxProcs){$pm->start and next};
-		
-	my $CachedResults = {}; #Allow for caching of distributions after Random Model to speed things up
-		
-	open HTML, ">$HTMLPATH/$OutputFilename".$$.".html" or die "Can't open file $HTMLPATH/$OutputFilename".$!;
-	open OUT, ">$RAWPATH/$OutputFilename".$$.".-RawData.colsv" or die "Can't open file $RAWPATH/$OutputFilename".$!;
-	open DELS, ">$DELSPATH/DelRates".$$.".dat" or die "Can't open file $DELSPATH/DelRates".$!;
-	open RAWSIM, ">$SIMULATIONSPATH/SimulationData".$$.".dat" or die "Can't open file $SIMULATIONSPATH/SimulationData".$!;		
-	open SELFTEST, ">$SELFTERSTPATH/SelfTestData".$$.".dat" or die "Can't open file $SELFTERSTPATH/SelfTestData".$!;
-	
-	foreach my $DomArch (@$ArchsListRef){
-	
-	my ($CladeGenomes,$NodesObserved);
+		my ($CladeGenomes,$NodesObserved);
 		
 		my $NodeName2NodeID = {};
 		map{$NodeName2NodeID->{$TreeCacheHash->{$_}{'node_id'}}= $_ }@TreeGenomesNodeIDs; #Generate a lookup table of leaf_name 2 node_id
 		
-		my $HashOfGenomesObserved = $DomCombGenomeHash->{$DomArch};
+		my $HashOfGenomesObserved = $DomCombGenomeHash->{$domainarchitecture};
 		@$NodesObserved = keys(%$HashOfGenomesObserved);
 		
 		my @NodeIDsObserved = @{$NodeName2NodeID}{@$NodesObserved};#Hash slice to extract the node ids of the genomes observed
@@ -329,7 +301,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 
 			 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
 			 	
-					($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+					($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
 					
 				}else{
 					die "Inappropriate model selected";
@@ -345,129 +317,261 @@ foreach my $fork (0 .. $NoOfForks-1){
 		@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
 		@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
 				
-		print DELS "$DomArch:$deletion_rate:$dels\n" unless ($deletion_rate == 0);
-		#print "$DomArch:$deletion_rate\n";
-		
-		my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
-				
-		if($deletion_rate > 0){
 	
-			unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
+	
+	unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
+	
+		my $SingleCombGenomeSimHash = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$deletion_rate,$TreeCacheHash);
+		
+		if(scalar(keys(%$SingleCombGenomeSimHash))){
+			$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
+			map{$SingleSimDomCombGenomeHash->{$domainarchitecture}{$TreeCacheHash->{$_}{'node_id'}}=1}(keys(%$SingleCombGenomeSimHash));
+		}
+	}
+	
+	#Measure the deletion rate of a domain architecture before performing a simulation for those above a small epsilon.	
+}
+
+#Dump out single sim, for resuse in script
+
+	print STDERR "Creating a dump of a single round of simulations data - printed to file: PID".$$."simulated_spcies_data.dat\n";
+	EasyDump("PID".$$."simulated_spcies_data.dat",[$root,$TreeCacheHash,$SingleSimDomCombGenomeHash]);
+
+}
+
+# Many simulations with comparison of posterior quantiles --------
+
+if($fullsims){
+	
+	my $NoOfForks = $maxProcs;
+	$NoOfForks = 1 unless($maxProcs);
+	
+	my $remainder = scalar(@$DomArchs)%$NoOfForks;
+	my $binsize = (scalar(@$DomArchs)-$remainder)/$NoOfForks;
+	
+	my $ForkJobsHash = {};
+	
+	for my $i (0 .. $NoOfForks-1){
+		
+		my @ForkJobList = @{$DomArchs}[$i*$binsize .. ($i+1)*$binsize-1];
+		$ForkJobsHash->{$i}=\@ForkJobList;
+	}
+	#Create lists of jobs to be done by the relative forks
+	
+	push(@{$ForkJobsHash->{0}},@{$DomArchs}[($NoOfForks)*$binsize .. ($NoOfForks)*$binsize+$remainder-1]) if ($remainder);
+	
+	print STDERR "No Dom Archs in job batch is approx: ".$binsize."\n";
+		
+		
+	my $pm = new Parallel::ForkManager($maxProcs) if ($maxProcs);# Initialise
+	
+	foreach my $fork (0 .. $NoOfForks-1){
+		
+		my $ArchsListRef = $ForkJobsHash->{$fork};
+			
+			
+		# Forks and returns the pid for the child:
+		if ($maxProcs){$pm->start and next};
+			
+		my $CachedResults = {}; #Allow for caching of distributions after Random Model to speed things up
+			
+		open HTML, ">$HTMLPATH/$OutputFilename".$$.".html" or die "Can't open file $HTMLPATH/$OutputFilename".$!;
+		open OUT, ">$RAWPATH/$OutputFilename".$$.".-RawData.colsv" or die "Can't open file $RAWPATH/$OutputFilename".$!;
+		open DELS, ">$DELSPATH/DelRates".$$.".dat" or die "Can't open file $DELSPATH/DelRates".$!;
+		open RAWSIM, ">$SIMULATIONSPATH/SimulationData".$$.".dat" or die "Can't open file $SIMULATIONSPATH/SimulationData".$!;		
+		open SELFTEST, ">$SELFTERSTPATH/SelfTestData".$$.".dat" or die "Can't open file $SELFTERSTPATH/SelfTestData".$!;
+		
+		foreach my $DomArch (@$ArchsListRef){
+		
+		my ($CladeGenomes,$NodesObserved);
+			
+			my $NodeName2NodeID = {};
+			map{$NodeName2NodeID->{$TreeCacheHash->{$_}{'node_id'}}= $_ }@TreeGenomesNodeIDs; #Generate a lookup table of leaf_name 2 node_id
+			
+			my $HashOfGenomesObserved = $DomCombGenomeHash->{$DomArch};
+			@$NodesObserved = keys(%$HashOfGenomesObserved);
+			
+			my @NodeIDsObserved = @{$NodeName2NodeID}{@$NodesObserved};#Hash slice to extract the node ids of the genomes observed
+			#Get the node IDs as the follwoing function doesn't work with the raw node tags
+	
+			my $MRCA;
+			my $deletion_rate;
+			my ($dels, $time) = (0,0);
+			
+			unless(scalar(@$NodesObserved) == 1){
+				
+				$MRCA = FindMRCA($TreeCacheHash,$root,\@NodeIDsObserved);#($TreeCacheHash,$root,$LeavesArrayRef)
+	
+				 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
+				 	
+						($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
 						
-				if($model eq 'Julian'){
-									
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-																					
-				}elsif($model eq 'poisson'){
+					}else{
+						die "Inappropriate model selected";
+					}
 					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-
-				}elsif($model eq 'corrpoisson'){
+				$deletion_rate = $dels/$time;
+				
+			}else{
+				$deletion_rate = 0;	
+				$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
+			}
 					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-
+			@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
+			@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
+					
+			print DELS "$DomArch:$deletion_rate:$dels\n" unless ($deletion_rate == 0);
+			#print "$DomArch:$deletion_rate\n";
+			
+			my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
+					
+			if($deletion_rate > 0){
+		
+				unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
+							
+					if($model eq 'Julian'){
+										
+						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+																						
+					}elsif($model eq 'poisson'){
+						
+						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+	
+					}elsif($model eq 'corrpoisson'){
+						
+						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+	
+					}else{
+						die "No appropriate model selected";
+					}
+					
+				$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
+				
 				}else{
-					die "No appropriate model selected";
+					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
 				}
 				
-			$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
-			
+				my $RawSimData = join(',',@$RawResults);
+				print RAWSIM @$CladeGenomes.','.@$NodesObserved.':'.$DomArch.':'.$RawSimData."\n";
+				#Print simulation data out to file so as to allow for testing of convergence
+				
 			}else{
-				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
+				
+				($selftest,$distribution) = ('NULL',{});
 			}
 			
-			my $RawSimData = join(',',@$RawResults);
-			print RAWSIM @$CladeGenomes.','.@$NodesObserved.':'.$DomArch.':'.$RawSimData."\n";
-			#Print simulation data out to file so as to allow for testing of convergence
 			
-		}else{
 			
-			($selftest,$distribution) = ('NULL',{});
-		}
+	#-------------- Output
+			 
+			my $NoGenomesObserved = scalar(@$NodesObserved);
+			my $CladeSize = scalar(@$CladeGenomes);
 		
-		
-		
-#-------------- Output
-		 
-		my $NoGenomesObserved = scalar(@$NodesObserved);
-		my $CladeSize = scalar(@$CladeGenomes);
+			unless($deletion_rate < 10**-8){ #Unless the deletion rate is zero (or less than epsilon)
 	
-		unless($deletion_rate == 0){ #Essentially, unless the deletion rate is zero
-
-		#Prepare a hash of observations
-		
-		
-
-			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
-			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
+			#Prepare a hash of observations
 			
-			$distribution->{$selftest}--;
-	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
-
-			#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
-		
-	        print HTML "<a href=http://http://supfam.cs.bris.ac.uk/SUPERFAMILY/cgi-bin/maketree.cgi?genomes=";
-	        print HTML join(',', @$NodesObserved);
-	        print HTML ">$DomArch</a> Score: $PosteriorQuantileScore<BR>\n";
 			
-			print STDERR $DomArch."\n" unless($DomArch);
-			$DomArch = 'NULL' unless($DomArch);
-			
-			print OUT "$DomArch:$PosteriorQuantileScore\n";
-			print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
-			#The output value 'Score:' is the probability, givn the model, that there are more genomes in the simulation than in reality. Also called the 'Posterior quantile'
-		}
-
-}
-
-	close HTML;
-	close OUT;
-	close DELS;
-	close RAWSIM;
-	close SELFTEST;
 	
-$pm->finish if ($maxProcs); # Terminates the child process
+				my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
+				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
+				
+				$distribution->{$selftest}--;
+		 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+	
+				#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
+			
+		        print HTML "<a href=http://http://supfam.cs.bris.ac.uk/SUPERFAMILY/cgi-bin/maketree.cgi?genomes=";
+		        print HTML join(',', @$NodesObserved);
+		        print HTML ">$DomArch</a> Score: $PosteriorQuantileScore<BR>\n";
+				
+				print STDERR $DomArch."\n" unless($DomArch);
+				$DomArch = 'NULL' unless($DomArch);
+				
+				print OUT "$DomArch:$PosteriorQuantileScore\n";
+				print SELFTEST "$DomArch:$SelfTestPosteriorQuantile\n";
+				#The output value 'Score:' is the probability, givn the model, that there are more genomes in the simulation than in reality. Also called the 'Posterior quantile'
+			}
+	
+	}
+	
+		close HTML;
+		close OUT;
+		close DELS;
+		close RAWSIM;
+		close SELFTEST;
+		
+	$pm->finish if ($maxProcs); # Terminates the child process
+	
+	
+	}
+	
+	print STDERR "Waiting for Children...\n";
+	$pm->wait_all_children if ($maxProcs);
+	print STDERR "Everybody is out of the pool!\n";
+	
+	`cat $HTMLPATH/* > ./$OutputFilename.html`;
+	`cat $DELSPATH/* > ./.DelRates.dat`;
+	`cat $RAWPATH/* > ./$OutputFilename-RawData.colsv`;
+	`cat $SIMULATIONSPATH/* > ./RawSimulationDists$Iterations-Itr$$.dat`;
+	`cat $SELFTERSTPATH/* > ./SelfTest-RawData.colsv`;
+	`cat $BIASPATH/* > ./BiasEstimates.colsv`;
+	
+	open SCORES, "<$OutputFilename-RawData.colsv" or die $!;
+	
+	my $DomArch2ScoresHash = {};
+	
+	while (my $line = <SCORES>){
+		
+		chomp($line);
+		my ($DomArch,$Score) = split(/:/,$line);
+		$DomArch2ScoresHash->{$DomArch}=$Score;
+	}
+	
+	close SCORES;
+	
+	my @Scores = values(%$DomArch2ScoresHash);
+	
+	my $NumberLHSscores = grep{$_ < 0.5}@Scores;
+	my $NumberRHSscores = grep{$_ > 0.5}@Scores;
+	
+	my $Asymmetry = 100*($NumberRHSscores - $NumberLHSscores)/scalar(@Scores);
+	
+	$NumberLHSscores = grep{$_ < 0.5 && $_ > 0.1}@Scores;
+	$NumberRHSscores = grep{$_ > 0.5 && $_ < 0.9}@Scores;
+	
+	my $EightyPercentAsymmetry =  100*($NumberRHSscores - $NumberLHSscores)/($NumberLHSscores + $NumberRHSscores);
+	
+	open ASYM, ">Asymmetry.txt" or die $!.$?;
+	print ASYM "Total Asymmetry: ".$Asymmetry."%\n";
+	print ASYM "Mid-Eighty Percent".$EightyPercentAsymmetry."%";
+	close ASYM;
+	
+	`Hist.py -f "./$OutputFilename-RawData.colsv" -o $OutputFilename.png -t "Histogram of Cumulative p-Values" -x "P(Nm < nr)" -y "Frequency"	` ;
+	`Hist.py -f "./SelfTest-RawData.colsv" -o SelfTest.png -t "Histogram of Self-Test Cumulative p-Values" -x "P(Nm < nm)" -y "Frequency"	` ;
+	`Hist.py -f "./.DelRates.dat" -o ParDelRates.png -t "Histogram of Non-zero DeletionRates" -x "Deletion Rate" -y "Frequency"	-l Deletions`;
 
-
+	# Plot a couple of histograms for easy inspection of the data
+	
+	open PLOT, ">./.ParPlotCommands.txt" or die $!;
+	print PLOT "Hist.py -f ./$OutputFilename-RawData.colsv -o $OutputFilename.png -t 'Histogram of Scores' -x 'Score' -y 'Frequency'\n\n\n";
+	print PLOT "Hist.py -f './.DelRates.dat' -o 'ParDelRates.png' -t 'Histogram of Non-zero DeletionRates' -x 'Deletion Rate' -y 'Frequency'	-l 'Deletions'\n\n\n";
+	print PLOT "Hist.py -f './SelfTest-RawData.colsv' -o SelfTest.png -t 'Histogram of Self-Test Cumulative p-Values' -x 'P(Nm < nm')' -y 'Frequency'\n\n\n";
+	close PLOT;
+	
+	my $TotalToc = Time::HiRes::time;
+	my $TotalTimeTaken = ($TotalToc - $TotalTic);
+	my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
+	
+	open RUNINFOTIME, ">>HGT_info.$OutputFilename";
+	print RUNINFOTIME $TotalTimeTaken." seconds\n";
+	print RUNINFOTIME $TotalTimeTakenHours." hours\n";
+	close RUNINFOTIME;
+	
+	print STDERR $TotalTimeTaken." seconds\n";
+	print STDERR $TotalTimeTakenHours." hours\n";
+	
 }
-
-print STDERR "Waiting for Children...\n";
-$pm->wait_all_children if ($maxProcs);
-print STDERR "Everybody is out of the pool!\n";
-
-`cat $HTMLPATH/* > ./$OutputFilename.html`;
-`cat $DELSPATH/* > ./.DelRates.dat`;
-`cat $RAWPATH/* > ./$OutputFilename-RawData.colsv`;
-`cat $SIMULATIONSPATH/* > ./RawSimulationDists$Iterations-Itr$$.dat`;
-`cat $SELFTERSTPATH/* > ./SelfTest-RawData.colsv`;
-`cat $BIASPATH/* > ./BiasEstimates.colsv`;
-
-
-`Hist.py -f "./$OutputFilename-RawData.colsv" -o $OutputFilename.png -t "Histogram of Cumulative p-Values" -x "P(Nm < nr)" -y "Frequency"	` ;
-`Hist.py -f "./SelfTest-RawData.colsv" -o SelfTest.png -t "Histogram of Self-Test Cumulative p-Values" -x "P(Nm < nm)" -y "Frequency"	` ;
-`Hist.py -f "./.DelRates.dat" -o ParDelRates.png -t "Histogram of Non-zero DeletionRates" -x "Deletion Rate" -y "Frequency"	-l Deletions`;
-`Hist.py -f ./BiasEstimates.colsv -o Bias.png --xlab 'Simualtion' --ylab 'Bias' --title 'Estimate of per simulation bias in deletion probability distribution'`;
-
-# Plot a couple of histograms for easy inspection of the data
-
-open PLOT, ">./.ParPlotCommands.txt" or die $!;
-print PLOT "Hist.py -f ./$OutputFilename-RawData.colsv -o $OutputFilename.png -t 'Histogram of Scores' -x 'Score' -y 'Frequency'\n\n\n";
-print PLOT "Hist.py -f './.DelRates.dat' -o 'ParDelRates.png' -t 'Histogram of Non-zero DeletionRates' -x 'Deletion Rate' -y 'Frequency'	-l 'Deletions'\n\n\n";
-print PLOT "Hist.py -f './SelfTest-RawData.colsv' -o SelfTest.png -t 'Histogram of Self-Test Cumulative p-Values' -x 'P(Nm < nm')' -y 'Frequency'\n\n\n";
-print PLOT `Hist.py -f ./BiasEstimates.colsv -o Bias.png --xlab 'Simualtion' --ylab 'Bias' --title 'Estimate of per simulation bias in deletion probability distribution'`;
-close PLOT;
-
-my $TotalToc = Time::HiRes::time;
-my $TotalTimeTaken = ($TotalToc - $TotalTic);
-my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
-
-open RUNINFOTIME, ">>HGT_info.$OutputFilename";
-print RUNINFOTIME $TotalTimeTaken." seconds\n";
-print RUNINFOTIME $TotalTimeTakenHours." hours\n";
-close RUNINFOTIME;
-
-print STDERR $TotalTimeTaken." seconds\n";
-print STDERR $TotalTimeTakenHours." hours\n";
 
 #-------
 __END__
