@@ -1,4 +1,4 @@
-#! /usr/bin/env perl
+#!/usr/bin/env perl
 
 =head1 NAME
 
@@ -6,15 +6,53 @@ HGT-parallel<.pl>
 
 =head1 USAGE
 
-HGT-parallel.pl [options -v,-d,-h] <ARGS>
+HGT-parallel.pl
 
 Example usage: 
 
-HGT-parallel.pl --check n -itr 5000 -p nocores -i treefile -o output
+HGT-parallel.pl --check n -itr 5000 -p 10 -i ./tree.nwk -o output --singlesim/--simulations
 
 =head1 SYNOPSIS
 
-A script for analysising the global extent of horizontal gene trasnfer by studying the phyletic pattern of domain architectures across a given tree. 
+A script for analysising the global extent of horizontal gene trasnfer by studying the phyletic pattern of domain architectures across a given tree.
+
+There are a variety of options and modes to specify:
+
+	-h
+	
+	Shows this help document
+	
+	--check (y/n) DEFAULT: n
+	
+	Perform internal checks as to whether a genome is 'include = y' within the SUPERFAMILY database
+	
+	-i  --tree / -ha --hash
+	
+	input newick tree file, which will then be quieried against the SUPERFAMILY databse. As an alternative, you may provide a data dump using -ha produced using -di or --singlesim
+	
+	--simualtions (options of specifying a number of processor cores to use using -p, which is strongly advised).
+	
+	This will perform full simulations under the model specified using -m (DEFAULT: poisson) and report the placement of 
+	
+		Additional paramters: -fnr --fals_negative_rate (Flase negative rate)
+								 -p --processor_cores (Number of threads to create to perform simualtions)
+								 -m --model (model to use in performing simualtions. Choose from 'Julian', 'poisson' or 'corrpoisson')
+								 -dm --delmodel (model to use in assigning dleetion rates. Choose from 'Julian' and 'Uniform')
+								 -s --store (minor speedup optimisation, it caches simualtion results so that they can be reused if identical paramters occur more than once. DEFAULT: FALSE)
+	
+	-o --output
+	
+	Output filename stub
+	
+	--singlesim
+	
+	Using the model conditions specified, this will perform a single simulations per domain architecture and then spit out a datastructure of the same form as -di.
+	You can then load these back into the program using -ha
+	
+	-di --dump_input
+	
+	Dump intput. This will dump out the perl datastructure for use in inspecting or reloading data. Reload using -ha
+	
 
 =head1 AUTHOR
 
@@ -41,9 +79,17 @@ use lib "$ENV{HOME}/bin/perl-libs-custom/";
 =head1 DEPENDANCY
 B<Getopt::Long> Used to parse command line options.
 B<Pod::Usage> Used for usage and help output.
-B<Data::Dumper> Used for debug output.
+B<Data::Dumper> Used for debug output and for dumping out datastructures
 B<Math::Random> Used in Monte Carlo simulations steps
+B<Parallel::ForkManager> Used for multi-threaded simualtions
+B<DBI> Needed for database querying
+B<Time::HiRes> Used to produce time estimates of event durations
+B<List::Util> Sum function needed in producing summary statistics
+B<File::Temp> Parallel implementation writes to temporary files in ram. This module ensures that they are cleaned up
+B<Supfam::*> Supfam Toolkit provides a variety of custom tools needed. From simualtions to parsing newick trees.
 =cut
+
+
 use Getopt::Long;                     #Deal with command line options
 use Pod::Usage;                       #Print a usage man page from the POD comments after __END__
 
@@ -83,6 +129,9 @@ my $check = 'y'; #Perform a sanity check on the tree? This should be 'y' unless 
 my $dumpinput;
 my $fullsims; #flag for performing full posterior quantile simulations
 my $singlesim;
+my $delmodel = 'Julian';
+
+my $CommandOps = join(' ',@ARGV);
 
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
@@ -97,11 +146,12 @@ GetOptions("verbose|v!"  => \$verbose,
            "no_iternations|itr:i" => \$Iterations,
            "fals_negative_rate|fnr:f" => \$FalseNegativeRate,
            "model|m:s" => \$model,
-           "store|s:i" => \$store,
+           "store|s!" => \$store,
            "check|c:s" => \$check,
-           "dumpinout|di!" => \$dumpinput,
+           "dump_input|di!" => \$dumpinput,
            "simulations!" => \$fullsims,
            "singlesim!" => \$singlesim,
+           "delmodel|dm:s" => \$delmodel,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
 #Print out some help if it was asked for or if no arguments were given.
@@ -120,7 +170,6 @@ my $HTMLPATH = File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!
 my $DELSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 my $SIMULATIONSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 my $SELFTERSTPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
-my $BIASPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 
 # Main Script Content
 #----------------------------------------------------------------------------------------------------------------
@@ -131,20 +180,22 @@ my $DomCombGenomeHash = {};
 
 open RUNINFO, ">HGT_info.$OutputFilename";
 
-print STDERR "No of iterations per run is: $Iterations\n";
-print STDERR "False Negative Rate:".$FalseNegativeRate."\n";
-print STDERR "Model used: $model\n";
-print STDERR "Cores used: $maxProcs\n";
+print STDERR "No of iterations per run is: $Iterations\n" if($fullsims);
+
+print STDERR "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
+print STDERR "Simualtion Model used: $model\n";
+print STDERR "Deletion Model used: $delmodel\n";
+print STDERR "Cores used: $maxProcs\n" if ($maxProcs > 0);
 print STDERR "Complete Architectures?: $completes\n";
-print STDERR "Command line invocation: $0 \n";
+print STDERR "Command line invocation: $0 $CommandOps \n";
 
-print RUNINFO "No of iterations per run is: $Iterations\n";
-
-print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n";
-print RUNINFO "Model used: $model\n";
-print RUNINFO "Cores used: $maxProcs\n";
+print RUNINFO "No of iterations per run is: $Iterations\n" if($fullsims);
+print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
+print RUNINFO "Simualtion Model used: $model\n";
+print RUNINFO "Deletion Model used: $delmodel\n";
+print RUNINFO "Cores used: $maxProcs\n" if ($maxProcs > 0);
 print RUNINFO "Complete Architectures?: $completes\n\n\n";
-print RUNINFO "Command line invocation: $0 \n";
+print RUNINFO "Command line invocation: $0 $CommandOps\n";
 
 if($TreeFile){
 	
@@ -275,69 +326,95 @@ print STDERR "Total No Of Dom Archs: ".@$DomArchs."\n";
 #Single simultion for each domain architecture
 
 if($singlesim){
-
-my $SingleSimDomCombGenomeHash = {};
-
-foreach my $domainarchitecture (@$DomArchs){
 	
-		my ($CladeGenomes,$NodesObserved);
+	my $SingleSimDomCombGenomeHash = {};
+	
+	foreach my $domainarchitecture (@$DomArchs){
 		
+		my ($CladeGenomes,$NodesObserved);
+			
 		my $NodeName2NodeID = {};
 		map{$NodeName2NodeID->{$TreeCacheHash->{$_}{'node_id'}}= $_ }@TreeGenomesNodeIDs; #Generate a lookup table of leaf_name 2 node_id
-		
+			
 		my $HashOfGenomesObserved = $DomCombGenomeHash->{$domainarchitecture};
 		@$NodesObserved = keys(%$HashOfGenomesObserved);
 		
 		my @NodeIDsObserved = @{$NodeName2NodeID}{@$NodesObserved};#Hash slice to extract the node ids of the genomes observed
 		#Get the node IDs as the follwoing function doesn't work with the raw node tags
-
-		my $MRCA;
-		my $deletion_rate;
-		my ($dels, $time) = (0,0);
-		
-		unless(scalar(@$NodesObserved) == 1){
+	
+		my 	$MRCA = FindMRCA($TreeCacheHash,$root,\@NodeIDsObserved);#($TreeCacheHash,$root,$LeavesArrayRef)
+	
+		if($delmodel eq 'Julian'){
+	
+			my $deletion_rate;
+			my ($dels, $time) = (0,0);
 			
-			$MRCA = FindMRCA($TreeCacheHash,$root,\@NodeIDsObserved);#($TreeCacheHash,$root,$LeavesArrayRef)
-
-			 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
-			 	
-					($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+			unless(scalar(@$NodesObserved) == 1){
+				
+				($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree
+				$deletion_rate = $dels/$time;
+				
+			}else{
+				
+				$deletion_rate = 0;	
+				$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
+			}
 					
-				}else{
-					die "Inappropriate model selected";
-				}
+			@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
+			@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
+					
 				
-			$deletion_rate = $dels/$time;
-			
-		}else{
-			$deletion_rate = 0;	
-			$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
-		}
-				
-		@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
-		@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
-				
-	
-	
-	unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
-	
-		my $SingleCombGenomeSimHash = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$deletion_rate,$TreeCacheHash);
+		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
 		
-		if(scalar(keys(%$SingleCombGenomeSimHash))){
-			$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
-			map{$SingleSimDomCombGenomeHash->{$domainarchitecture}{$TreeCacheHash->{$_}{'node_id'}}=1}(keys(%$SingleCombGenomeSimHash));
+			my $SingleCombGenomeSimHash = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$deletion_rate,$TreeCacheHash);
+			
+			if(scalar(keys(%$SingleCombGenomeSimHash))){
+				$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
+				map{$SingleSimDomCombGenomeHash->{$domainarchitecture}{$TreeCacheHash->{$_}{'node_id'}}=1}(keys(%$SingleCombGenomeSimHash));
+			}
 		}
+		
+		#Measure the deletion rate of a domain architecture before performing a simulation for those above a small epsilon.	
+	
+		}elsif($delmodel eq 'Uniform'){
+						#Kind of a 'null model' for deletion rates. Rather than rely on empirically observed rate, simply select a deletion rate at random
+						
+						unless(scalar(@$NodesObserved) == 1){
+										
+							my $ShuffledCladeGenomes = [];
+							@$ShuffledCladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}};
+							
+							#Single unifrom number 'N' between 1 and size_of_clade.
+							
+							my $RandomCladeInt = random_uniform_integer(1,0,scalar(@$ShuffledCladeGenomes)-1);
+							
+							#Shuffle the genomes, then choose the first 'N' terms.
+							
+							fisher_yates_shuffle($ShuffledCladeGenomes);
+							
+						unless($RandomCladeInt == 1){
+						
+							$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
+							map{$SingleSimDomCombGenomeHash->{$domainarchitecture}{$TreeCacheHash->{$_}{'node_id'}}=1}(@$ShuffledCladeGenomes[0 .. $RandomCladeInt]);
+								
+						}
+					}
+	
+		}else{
+					
+						die "Inappropriate deletion model selected";
+		}
+	
+	#Dump out single sim, for resuse in script
+	
 	}
 	
-	#Measure the deletion rate of a domain architecture before performing a simulation for those above a small epsilon.	
+		print STDERR "Creating a dump of a single round of simulations data - printed to file: PID".$$."simulated_spcies_data.dat\n";
+		EasyDump("PID".$$."simulated_spcies_data.dat",[$root,$TreeCacheHash,$SingleSimDomCombGenomeHash]);
+	
 }
 
-#Dump out single sim, for resuse in script
 
-	print STDERR "Creating a dump of a single round of simulations data - printed to file: PID".$$."simulated_spcies_data.dat\n";
-	EasyDump("PID".$$."simulated_spcies_data.dat",[$root,$TreeCacheHash,$SingleSimDomCombGenomeHash]);
-
-}
 
 # Many simulations with comparison of posterior quantiles --------
 
@@ -407,6 +484,7 @@ if($fullsims){
 						($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
 						
 					}else{
+						
 						die "Inappropriate model selected";
 					}
 					
@@ -469,10 +547,6 @@ if($fullsims){
 		
 			unless($deletion_rate < 10**-8){ #Unless the deletion rate is zero (or less than epsilon)
 	
-			#Prepare a hash of observations
-			
-			
-	
 				my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 				#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 				
@@ -515,7 +589,6 @@ if($fullsims){
 	`cat $RAWPATH/* > ./$OutputFilename-RawData.colsv`;
 	`cat $SIMULATIONSPATH/* > ./RawSimulationDists$Iterations-Itr$$.dat`;
 	`cat $SELFTERSTPATH/* > ./SelfTest-RawData.colsv`;
-	`cat $BIASPATH/* > ./BiasEstimates.colsv`;
 	
 	open SCORES, "<$OutputFilename-RawData.colsv" or die $!;
 	
@@ -558,20 +631,20 @@ if($fullsims){
 	print PLOT "Hist.py -f './.DelRates.dat' -o 'ParDelRates.png' -t 'Histogram of Non-zero DeletionRates' -x 'Deletion Rate' -y 'Frequency'	-l 'Deletions'\n\n\n";
 	print PLOT "Hist.py -f './SelfTest-RawData.colsv' -o SelfTest.png -t 'Histogram of Self-Test Cumulative p-Values' -x 'P(Nm < nm')' -y 'Frequency'\n\n\n";
 	close PLOT;
-	
-	my $TotalToc = Time::HiRes::time;
-	my $TotalTimeTaken = ($TotalToc - $TotalTic);
-	my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
-	
-	open RUNINFOTIME, ">>HGT_info.$OutputFilename";
-	print RUNINFOTIME $TotalTimeTaken." seconds\n";
-	print RUNINFOTIME $TotalTimeTakenHours." hours\n";
-	close RUNINFOTIME;
-	
-	print STDERR $TotalTimeTaken." seconds\n";
-	print STDERR $TotalTimeTakenHours." hours\n";
-	
+		
 }
+
+my $TotalToc = Time::HiRes::time;
+my $TotalTimeTaken = ($TotalToc - $TotalTic);
+my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
+
+open RUNINFOTIME, ">>HGT_info.$OutputFilename";	
+print RUNINFOTIME $TotalTimeTaken." seconds\n";
+print RUNINFOTIME $TotalTimeTakenHours." hours\n";
+close RUNINFOTIME;
+	
+print STDERR $TotalTimeTaken." seconds\n";
+print STDERR $TotalTimeTakenHours." hours\n";
 
 #-------
 __END__
