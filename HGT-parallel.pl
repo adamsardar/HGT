@@ -37,7 +37,7 @@ There are a variety of options and modes to specify:
 		Additional paramters: -fnr --fals_negative_rate (Flase negative rate)
 								 -p --processor_cores (Number of threads to create to perform simualtions)
 								 -m --model (model to use in performing simualtions. Choose from 'Julian', 'poisson' or 'corrpoisson')
-								 -dm --delmodel (model to use in assigning dleetion rates. Choose from 'Julian' and 'Uniform')
+								 -dm --delmodel (model to use in assigning dleetion rates. Choose from 'Julian', 'Uniform', 'Geometric' and 'Power')
 								 -s --store (minor speedup optimisation, it caches simualtion results so that they can be reused if identical paramters occur more than once. DEFAULT: FALSE)
 	
 	-o --output
@@ -104,7 +104,7 @@ use File::Temp;
 use Time::HiRes;
 
 use Parallel::ForkManager;
-use Math::Random qw(random_uniform_integer);
+use Math::Random qw(random_uniform_integer random_uniform random_exponential);
 use List::Util qw(sum);#Used in generating summary statistics
 
 # Command Line Options
@@ -376,7 +376,7 @@ if($singlesim){
 		
 		#Measure the deletion rate of a domain architecture before performing a simulation for those above a small epsilon.	
 	
-		}elsif($delmodel eq 'Uniform'){
+		}elsif($delmodel eq 'Uniform' || $delmodel eq 'Power' || $delmodel eq 'Geometric'){
 						#Kind of a 'null model' for deletion rates. Rather than rely on empirically observed rate, simply select a deletion rate at random
 						
 						unless(scalar(@$NodesObserved) == 1){
@@ -384,9 +384,42 @@ if($singlesim){
 							my $ShuffledCladeGenomes = [];
 							@$ShuffledCladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}};
 							
-							#Single unifrom number 'N' between 1 and size_of_clade.
+							my $RandomCladeInt;
 							
-							my $RandomCladeInt = random_uniform_integer(1,0,scalar(@$ShuffledCladeGenomes)-1);
+							if($delmodel eq 'Uniform'){
+								#Single unifrom number 'N' between 1 and size_of_clade.
+								$RandomCladeInt = random_uniform_integer(1,0,scalar(@$ShuffledCladeGenomes)-1);
+								
+							}elsif($delmodel eq 'Power'){
+								
+								my $UnifromVal = random_uniform(1,0,scalar(@$ShuffledCladeGenomes)-1);
+								
+								my $counter =0;
+								
+								while($RandomCladeInt ~~ undef || $RandomCladeInt > (scalar(@$ShuffledCladeGenomes)-1) || $RandomCladeInt < 0){
+									
+									$counter++;
+									die "Somethign wrong here with Power deletion model\n" if($counter > 1000);
+									
+									$RandomCladeInt = int(exp((log($UnifromVal)-log(1.089))/2.089));
+									#12.29 is the average number of genomes that a dom arch belongs to in eukaryotes.
+								}
+								
+								
+							}elsif($delmodel eq 'Geometric'){
+								
+								my $counter =0;
+								
+								#Single unifrom number 'N' between 1 and size_of_clade.
+								while($RandomCladeInt ~~ undef || $RandomCladeInt > (scalar(@$ShuffledCladeGenomes)-1)){
+									
+									$counter++;
+									die "Somethign wrong here with Exponential deletion model\n" if($counter > 1000);
+									
+									$RandomCladeInt = int(random_exponential(1,'12.29'));
+									#12.29 is the average number of genomes that a dom arch belongs to in eukaryotes.
+								}
+							}					
 							
 							#Shuffle the genomes, then choose the first 'N' terms.
 							
