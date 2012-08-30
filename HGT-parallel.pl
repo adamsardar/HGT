@@ -92,6 +92,7 @@ B<Supfam::*> Supfam Toolkit provides a variety of custom tools needed. From simu
 
 use Getopt::Long;                     #Deal with command line options
 use Pod::Usage;                       #Print a usage man page from the POD comments after __END__
+use Carp;
 
 use DBI;
 
@@ -129,9 +130,10 @@ my $check = 'y'; #Perform a sanity check on the tree? This should be 'y' unless 
 my $dumpinput;
 my $fullsims; #flag for performing full posterior quantile simulations
 my $singlesim;
+my $HGTpercentage = 0;
 my $delmodel = 'Julian';
 
-my $CommandOps = join(' ',@ARGV);
+my $CommandOps = join("  ",@ARGV);
 
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
@@ -152,6 +154,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "simulations!" => \$fullsims,
            "singlesim!" => \$singlesim,
            "delmodel|dm:s" => \$delmodel,
+           "HGTpercentage|ht:i" => \$HGTpercentage,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
 #Print out some help if it was asked for or if no arguments were given.
@@ -180,22 +183,39 @@ my $DomCombGenomeHash = {};
 
 open RUNINFO, ">HGT_info.$OutputFilename";
 
-print STDERR "No of iterations per run is: $Iterations\n" if($fullsims);
+if($fullsims){
+	print STDERR "Runing a full set of simulations per trait and calculating the observed value placement ...\n";
+	print STDERR "No of iterations per run is: $Iterations\n" if($fullsims);
+	print STDERR "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
+	print STDERR "Simualtion Model used: $model\n";
+	print STDERR "Cores used: $maxProcs\n" if ($maxProcs > 0);
+}
+if($singlesim){
+	print STDERR "Runing a single simulation per trait and outputting the pseudo-observations ...\n";
+	print STDERR "Deletion Model used: $delmodel";
+	print STDERR " - HGT percentage: $HGTpercentage %" if($delmodel eq 'Julian');
+	print STDERR "\n";
+}
+print STDERR "Command line invocation: $0 $CommandOps\n";
+print STDERR "Complete Architectures?: $completes\n\n\n";
 
-print STDERR "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
-print STDERR "Simualtion Model used: $model\n";
-print STDERR "Deletion Model used: $delmodel\n";
-print STDERR "Cores used: $maxProcs\n" if ($maxProcs > 0);
-print STDERR "Complete Architectures?: $completes\n";
-print STDERR "Command line invocation: $0 $CommandOps \n";
 
-print RUNINFO "No of iterations per run is: $Iterations\n" if($fullsims);
-print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
-print RUNINFO "Simualtion Model used: $model\n";
-print RUNINFO "Deletion Model used: $delmodel\n";
-print RUNINFO "Cores used: $maxProcs\n" if ($maxProcs > 0);
-print RUNINFO "Complete Architectures?: $completes\n\n\n";
+if($fullsims){
+	print RUNINFO "Runing a full set of simulations per trait and calculating the observed value placement ...\n";
+	print RUNINFO "No of iterations per run is: $Iterations\n" if($fullsims);
+	print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
+	print RUNINFO "Simualtion Model used: $model\n";
+	print RUNINFO "Cores used: $maxProcs\n" if ($maxProcs > 0);
+}
+if($singlesim){
+	print RUNINFO "Runing a single simulation per trait and outputting the pseudo-observations ...\n";
+	print RUNINFO "Deletion Model used: $delmodel";
+	print RUNINFO " - HGT percentage: $HGTpercentage %" if($delmodel eq 'Julian');
+	print RUNINFO "\n";
+}
 print RUNINFO "Command line invocation: $0 $CommandOps\n";
+print RUNINFO "Complete Architectures?: $completes\n\n\n";
+
 
 if($TreeFile){
 	
@@ -324,6 +344,7 @@ print STDERR "Total No Of Dom Archs: ".@$DomArchs."\n";
 #Main-loop-------------------------------------------
 
 #Single simultion for each domain architecture
+croak "HGT percentage rate inaccurately set. Must be between 0 and 100%\n" unless($HGTpercentage >= 0 && $HGTpercentage <=100);
 
 if($singlesim){
 	
@@ -344,6 +365,9 @@ if($singlesim){
 	
 		my 	$MRCA = FindMRCA($TreeCacheHash,$root,\@NodeIDsObserved);#($TreeCacheHash,$root,$LeavesArrayRef)
 	
+		@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
+		@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
+	
 		if($delmodel eq 'Julian'){
 	
 			my $deletion_rate;
@@ -359,14 +383,10 @@ if($singlesim){
 				$deletion_rate = 0;	
 				$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
 			}
-					
-			@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
-			@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
-					
-				
+									
 		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
 		
-			my $SingleCombGenomeSimHash = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$deletion_rate,$TreeCacheHash);
+			my $SingleCombGenomeSimHash = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$deletion_rate,$TreeCacheHash,$HGTpercentage/100,0);
 			
 			if(scalar(keys(%$SingleCombGenomeSimHash))){
 				$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
@@ -381,58 +401,14 @@ if($singlesim){
 						
 						unless(scalar(@$NodesObserved) == 1){
 										
-							my $ShuffledCladeGenomes = [];
-							@$ShuffledCladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}};
-							
-							my $RandomCladeInt;
-							
-							if($delmodel eq 'Uniform'){
-								#Single unifrom number 'N' between 1 and size_of_clade.
-								$RandomCladeInt = random_uniform_integer(1,0,scalar(@$ShuffledCladeGenomes)-1);
-								
-							}elsif($delmodel eq 'Power'){
-								
-								my $UnifromVal = random_uniform(1,0,scalar(@$ShuffledCladeGenomes)-1);
-								
-								my $counter =0;
-								
-								while($RandomCladeInt ~~ undef || $RandomCladeInt > (scalar(@$ShuffledCladeGenomes)-1) || $RandomCladeInt < 0){
+						my $GenomesWithDAByHGT = HGTshuffle(\@$NodesObserved,$delmodel);
 									
-									$counter++;
-									die "Somethign wrong here with Power deletion model\n" if($counter > 1000);
-									
-									$RandomCladeInt = int(exp((log($UnifromVal)-log(1.089))/2.089));
-									#12.29 is the average number of genomes that a dom arch belongs to in eukaryotes.
-								}
-								
-								
-							}elsif($delmodel eq 'Geometric'){
-								
-								my $counter =0;
-								
-								#Single unifrom number 'N' between 1 and size_of_clade.
-								while($RandomCladeInt ~~ undef || $RandomCladeInt > (scalar(@$ShuffledCladeGenomes)-1)){
-									
-									$counter++;
-									die "Somethign wrong here with Exponential deletion model\n" if($counter > 1000);
-									
-									$RandomCladeInt = int(random_exponential(1,'12.29'));
-									#12.29 is the average number of genomes that a dom arch belongs to in eukaryotes.
-								}
-							}					
+						unless(scalar(@$GenomesWithDAByHGT) <= 1){
 							
-							#Shuffle the genomes, then choose the first 'N' terms.
-							
-							fisher_yates_shuffle($ShuffledCladeGenomes);
-							
-						unless($RandomCladeInt == 1){
-						
 							$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
-							map{$SingleSimDomCombGenomeHash->{$domainarchitecture}{$TreeCacheHash->{$_}{'node_id'}}=1}(@$ShuffledCladeGenomes[0 .. $RandomCladeInt]);
-								
+							map{$SingleSimDomCombGenomeHash->{$domainarchitecture}{$_}=1}(@$GenomesWithDAByHGT);		
 						}
 					}
-	
 		}else{
 					
 						die "Inappropriate deletion model selected";
@@ -546,11 +522,11 @@ if($fullsims){
 																						
 					}elsif($model eq 'poisson'){
 						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash,$HGTpercentage/100,0);
 	
 					}elsif($model eq 'corrpoisson'){
 						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash,$HGTpercentage/100,1);
 	
 					}else{
 						die "No appropriate model selected";
@@ -681,5 +657,3 @@ print STDERR $TotalTimeTakenHours." hours\n";
 
 #-------
 __END__
-
-
