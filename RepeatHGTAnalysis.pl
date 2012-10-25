@@ -162,7 +162,9 @@ close SELFTEST;
 `Hist.py -f "./$OutputDir/SelfTest-RawData.colsv" -o ./$OutputDir/SelfTest.png -t "Histogram of Self-Test Cumulative p-Values" -x "P(Nm < nm)" -y "Frequency"` ;
 
 
-`PostHGTAnalysis.pl -t $treefile --rawdata "./$OutputDir/RepeatScores-RawData.colsv" --delrates $DelRatesFile --simulations $SimulationsDataFile -o "$OutputDir/InDepthAnalysis/" -w 3000`;
+print STDERR "PostHGTAnalysis.pl -t $treefile --rawdata ./$OutputDir/RepeatScores-RawData.colsv --delrates $DelRatesFile --simulations $SimulationsDataFile -o $OutputDir/InDepthAnalysis/ -w 3000\n" if($debug); 
+
+`PostHGTAnalysis.pl -t $treefile --rawdata "./$OutputDir/RepeatScores-RawData.colsv" --delrates $DelRatesFile --simulations $SimulationsDataFile -o "./$OutputDir/InDepthAnalysis" -w 3000`;
 
 #Calculate overall left-right symmetry
 #Calculate left-right symmetry in 0.1-0.9
