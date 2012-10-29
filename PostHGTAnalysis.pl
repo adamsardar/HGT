@@ -56,11 +56,15 @@ my $verbose; #Flag for verbose output from command line opts
 my $debug;   #As above for debug
 my $help;    #Same again but this time should we output the POD man page defined after __END__
 my ($treefile) = glob("HGT_tree.*");
-my ($rawdatafile) = glob("*-RawData.colsv*");
+
+my @RawFiles = glob("*-RawData.colsv*");
+@RawFiles = grep{$_ !~ m/SelfTest/i}@RawFiles;
+my ($rawdatafile) = $RawFiles[0];
+print STDERR "Using raw data file: ".$rawdatafile."\n";
 my ($DelRatesFile) = glob(".DelRates.dat");
 my ($SimulationsDataFile) = glob("./RawSimulationDists*");
 my $NumberOfExamples = 20;
-my $Width = 1200;
+my $Width = 1500;
 
 my $OutputDir = 'IndepthStudyOfDAs';
 
@@ -82,7 +86,6 @@ pod2usage(-exitstatus => 0, -verbose => 2) if $help;
 
 # Main Script Content
 #----------------------------------------------------------------------------------------------------------------
-
 
 #Create an output directory if it doesn't already exist
 mkdir("./$OutputDir");

@@ -331,8 +331,10 @@ foreach my $fork (0 .. $NoOfForks-1){
 	
 			
 			my @PriorRates = random_gamma(2*$Iterations,$time,$dels); 
-			#Supply a gamma distribution paramterised by alpha=total time deletions occur in and beta = total number deletions
-			
+			#my @PriorRates = random_gamma(vals,beta,alpha); 
+			#(beta**alpha) / Gamma(alpha) * X**(alpha - 1) * Exp(-beta*X)
+			#Supply a gamma distribution paramterised by beta=total time deletions occur in and alpha = total number deletions
+			#Mean of alpha/beta = dels/time
 
 			#While loop over prior array
 			while (scalar(@$PosteriorEstimatesOFDeltionRate) < $Iterations){

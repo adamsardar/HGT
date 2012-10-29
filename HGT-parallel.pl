@@ -160,7 +160,7 @@ GetOptions("verbose|v!"  => \$verbose,
 #Print out some help if it was asked for or if no arguments were given.
 pod2usage(-exitstatus => 0, -verbose => 2) if $help;
 
-die "Inappropriate model chosen\n" unless ($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson');
+die "Inappropriate model chosen; models avaialvle are Julian, poisson, corrpoisson, negbin and corrnegbin\n" unless ($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson' || $model eq 'negbin' || $model eq 'corrnegbin');
 #---------------------------------------
 
 `mkdir /dev/shm/temp` unless (-d '/dev/shm/temp');
@@ -386,7 +386,7 @@ if($singlesim){
 									
 		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
 		
-			my $SingleCombGenomeSimHash = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$deletion_rate,$TreeCacheHash,$HGTpercentage/100,0);
+				my $SingleCombGenomeSimHash = HGTTreeDeletionModel($MRCA,$model,1,$dels,$time,$TreeCacheHash,$HGTpercentage/100);
 			
 			if(scalar(keys(%$SingleCombGenomeSimHash))){
 				$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
@@ -483,12 +483,14 @@ if($fullsims){
 			my $MRCA;
 			my $deletion_rate;
 			my ($dels, $time) = (0,0);
+			my $TotalBranchLength = undef;
+			
 			
 			unless(scalar(@$NodesObserved) == 1){
 				
 				$MRCA = FindMRCA($TreeCacheHash,$root,\@NodeIDsObserved);#($TreeCacheHash,$root,$LeavesArrayRef)
 	
-				 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson'){
+				 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson' || $model eq 'negbin' || $model eq 'corrnegbin'){
 				 	
 						($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
 						
@@ -499,6 +501,8 @@ if($fullsims){
 					
 				$deletion_rate = $dels/$time;
 				
+				$TotalBranchLength = $TreeCacheHash->{$MRCA}{'Total_branch_lengths'};
+				
 			}else{
 				$deletion_rate = 0;	
 				$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
@@ -507,7 +511,7 @@ if($fullsims){
 			@$CladeGenomes = @{$TreeCacheHash->{$MRCA}{'Clade_Leaves'}}; # Get all leaf genomes in this clade	
 			@$CladeGenomes = ($MRCA) if($TreeCacheHash->{$MRCA}{'is_Leaf'});
 					
-			print DELS "$DomArch:$deletion_rate:$dels\n" unless ($deletion_rate == 0);
+			print DELS "$DomArch:$deletion_rate:$dels:$time:$TotalBranchLength\n" unless ($deletion_rate == 0);
 			#print "$DomArch:$deletion_rate\n";
 			
 			my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
@@ -515,26 +519,12 @@ if($fullsims){
 			if($deletion_rate > 0){
 		
 				unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
-							
-					if($model eq 'Julian'){
-										
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-																						
-					}elsif($model eq 'poisson'){
 						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash,$HGTpercentage/100,0);
-	
-					}elsif($model eq 'corrpoisson'){
-						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash,$HGTpercentage/100,1);
-	
-					}else{
-						die "No appropriate model selected";
-					}
-					
-				$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
+					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModel($MRCA,$model,$Iterations,$dels,$time,$TreeCacheHash,$HGTpercentage/100);
+					$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
 				
 				}else{
+					
 					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
 				}
 				
