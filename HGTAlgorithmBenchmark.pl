@@ -96,6 +96,8 @@ if($TreeFile){
 }
 
 
+my $model = 'poisson';
+
 my @FullRootClade = @{$TreeCacheHash->{$root}{'Clade_Leaves'}};
 
 my $CladeSize = scalar(@FullRootClade);
@@ -115,7 +117,7 @@ my $deletion_rate = $dels/$time;
 
 my $tic = Time::HiRes::time;
 
-my ($SelftestValueA,$distributionA,$RawResultsA,$DeletionsNumberDistributionA) = RandomModelCorrPoisson($root,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+my ($selftest,$distributionA,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModel($root,$model,$Iterations,$dels,$time,$TreeCacheHash,0);
 
 #my $distributionA = {};
 
@@ -126,11 +128,10 @@ my $toc = Time::HiRes::time;
 print "Done normal Poisson in ".($toc-$tic)."\n";
 
 $tic = Time::HiRes::time;
+my $distributionB;
 
-#my $distributionB = {};
-#map{$distributionB->{$_}++}random_uniform_integer($Iterations,0,$CladeSize);
-my ($SelftestValueB,$distributionB,$RawResultsB,$DeletionsNumberDistributionB) = RandomModelCorrPoissonOptimised($root,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
-#my ($SelftestValueB,$distributionB,$RawResultsB,$DeletionsNumberDistributionB) = RandomModelCorrPoisson($root,$FalseNegativeRate,$Iterations,$deletion_rate,$TreeCacheHash);
+($selftest,$distributionB,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModelOptimised($root,$model,$Iterations,$dels,$time,$TreeCacheHash,0);
+
 $toc = Time::HiRes::time;
 
 print "Done optimised Poisson ".($toc-$tic)."\n";

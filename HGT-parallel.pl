@@ -520,7 +520,7 @@ if($fullsims){
 		
 				unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
 						
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModel($MRCA,$model,$Iterations,$dels,$time,$TreeCacheHash,$HGTpercentage/100);
+					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,$dels,$time,$TreeCacheHash,$HGTpercentage/100);
 					$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
 				
 				}else{
