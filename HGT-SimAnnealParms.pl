@@ -436,10 +436,14 @@ foreach my $fork (0 .. $NoOfForks-1){
 		#print "$DomArch:$deletion_rate\n";
 		
 		
-	#	my $newtoc =  Time::HiRes::time;
-	#	my $times = $newtoc - $newtic;
-	#	print STDERR $counter."'th DA done in ".$times." seconds\n";
-		last if ($counter > 50)
+		if($verbose){
+			my $newtoc =  Time::HiRes::time;
+			my $times = $newtoc - $newtic;
+			print STDERR $counter."'th DA done in ".$times." seconds and print flag was ".$print."\n";
+		}
+		
+		
+		last if ($counter > 40)
 		
 	}
 
