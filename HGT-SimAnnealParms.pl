@@ -376,6 +376,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 	foreach my $DomArch (@$ArchsListRef){
 		
 		$counter++;
+		my $newtic =  Time::HiRes::time;
 
 		my ($CladeGenomes,$NodesObserved);
 		
@@ -433,6 +434,12 @@ foreach my $fork (0 .. $NoOfForks-1){
 								
 		print DELS "$DomArch\t$deletion_rate\t$dels:$time\t$TotalBranchLength\t$lamba_best\t$lambda_original\t$diff\t$BestLambda_PostQuant\t$Original_PostQuant\t$selftest\n" if($print);
 		#print "$DomArch:$deletion_rate\n";
+		
+		
+	#	my $newtoc =  Time::HiRes::time;
+	#	my $times = $newtoc - $newtic;
+	#	print STDERR $counter."'th DA done in ".$times." seconds\n";
+		last if ($counter > 50)
 		
 	}
 
