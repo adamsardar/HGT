@@ -132,6 +132,7 @@ my $fullsims; #flag for performing full posterior quantile simulations
 my $singlesim;
 my $HGTpercentage = 0;
 my $delmodel = 'Julian';
+my $HGTmodel = 'drop';
 
 my $CommandOps = join("  ",@ARGV);
 
@@ -154,6 +155,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "simulations!" => \$fullsims,
            "singlesim!" => \$singlesim,
            "delmodel|dm:s" => \$delmodel,
+           "HGTmodel|hm:s" => \$HGTmodel,
            "HGTpercentage|ht:i" => \$HGTpercentage,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
@@ -188,12 +190,14 @@ if($fullsims){
 	print STDERR "No of iterations per run is: $Iterations\n" if($fullsims);
 	print STDERR "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
 	print STDERR "Simualtion Model used: $model\n";
+	print STDERR "HGT Model used: $HGTmodel\n" if($HGTpercentage >0);
 	print STDERR "Cores used: $maxProcs\n" if ($maxProcs > 0);
 }
 if($singlesim){
 	print STDERR "Runing a single simulation per trait and outputting the pseudo-observations ...\n";
+	print STDERR "HGT Model used: $HGTmodel\n" if($HGTpercentage >0);
 	print STDERR "Deletion Model used: $delmodel";
-	print STDERR " - HGT percentage: $HGTpercentage %" if($delmodel eq 'Julian');
+	print STDERR " - HGT percentage: $HGTpercentage %" if($delmodel eq 'Julian' && $HGTpercentage > 0);
 	print STDERR "\n";
 }
 print STDERR "Command line invocation: $0 $CommandOps\n";
@@ -205,12 +209,14 @@ if($fullsims){
 	print RUNINFO "No of iterations per run is: $Iterations\n" if($fullsims);
 	print RUNINFO "False Negative Rate:".$FalseNegativeRate."\n" if($fullsims);
 	print RUNINFO "Simualtion Model used: $model\n";
+	print RUNINFO "HGT Model used: $HGTmodel\n" if($HGTpercentage >0);
 	print RUNINFO "Cores used: $maxProcs\n" if ($maxProcs > 0);
 }
 if($singlesim){
 	print RUNINFO "Runing a single simulation per trait and outputting the pseudo-observations ...\n";
 	print RUNINFO "Deletion Model used: $delmodel";
-	print RUNINFO " - HGT percentage: $HGTpercentage %" if($delmodel eq 'Julian');
+	print RUNINFO "HGT Model used: $HGTmodel\n" if($HGTpercentage >0);
+	print RUNINFO " - HGT percentage: $HGTpercentage %" if($delmodel eq 'Julian' && $HGTpercentage > 0);
 	print RUNINFO "\n";
 }
 print RUNINFO "Command line invocation: $0 $CommandOps\n";
@@ -386,7 +392,7 @@ if($singlesim){
 									
 		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
 		
-				my $SingleCombGenomeSimHash = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100);
+				my $SingleCombGenomeSimHash = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
 			
 			if(scalar(keys(%$SingleCombGenomeSimHash))){
 				$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
@@ -520,8 +526,8 @@ if($fullsims){
 		
 				unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
 						
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100);
-					$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
+				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
+				$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
 				
 				}else{
 					

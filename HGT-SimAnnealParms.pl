@@ -441,10 +441,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 			my $times = $newtoc - $newtic;
 			print STDERR $counter."'th DA done in ".$times." seconds and print flag was ".$print."\n";
 		}
-		
-		
-		last if ($counter > 40)
-		
+				
 	}
 
 	close DELS;
@@ -467,7 +464,10 @@ my $TotalTimeTakenHours = $TotalTimeTaken/(60*60);
 open RUNINFOTIME, ">>HGT_info.$OutputFilename";	
 print RUNINFOTIME $TotalTimeTaken." seconds\n";
 print RUNINFOTIME $TotalTimeTakenHours." hours\n";
+print RUNINFOTIME "Result File Headers: Domain Architecture, Deletion Rate, Number of Deletions, Time Deletions Observed In, Total Branch Length, Best Found Del Rate, Original Del Rate, Difference, Best Del Rate Post Quant, Original Post Quant, Selftest\n";
 close RUNINFOTIME;
+	
+	"$DomArch\t$deletion_rate\t$dels:$time\t$TotalBranchLength\t$lamba_best\t$lambda_original\t$diff\t$BestLambda_PostQuant\t$Original_PostQuant\t$selftest\n"
 	
 print STDERR $TotalTimeTaken." seconds\n";
 print STDERR $TotalTimeTakenHours." hours\n";
