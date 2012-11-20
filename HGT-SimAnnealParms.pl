@@ -432,7 +432,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 			$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
 		}
 								
-		print DELS "$DomArch\t$deletion_rate\t$dels:$time\t$TotalBranchLength\t$lamba_best\t$lambda_original\t$diff\t$BestLambda_PostQuant\t$Original_PostQuant\t$selftest\n" if($print);
+		print DELS "$DomArch\t$deletion_rate\t$dels\t$time\t$TotalBranchLength\t$lamba_best\t$lambda_original\t$diff\t$BestLambda_PostQuant\t$Original_PostQuant\t$selftest\n" if($print);
 		#print "$DomArch:$deletion_rate\n";
 		
 		
