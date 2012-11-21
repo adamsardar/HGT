@@ -175,6 +175,7 @@ my $HTMLPATH = File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!
 my $DELSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 my $SIMULATIONSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 my $SELFTERSTPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
+my $DETAILEDRAWSIMSPATH= File::Temp->newdir( DIR => $RAMDISKPATH , CLEANUP => 1) or die $!;
 
 # Main Script Content
 #----------------------------------------------------------------------------------------------------------------
@@ -473,7 +474,8 @@ if($fullsims){
 		open DELS, ">$DELSPATH/DelRates".$$.".dat" or die "Can't open file $DELSPATH/DelRates".$!;
 		open RAWSIM, ">$SIMULATIONSPATH/SimulationData".$$.".dat" or die "Can't open file $SIMULATIONSPATH/SimulationData".$!;		
 		open SELFTEST, ">$SELFTERSTPATH/SelfTestData".$$.".dat" or die "Can't open file $SELFTERSTPATH/SelfTestData".$!;
-		
+		open DETRAWSIM, ">$DETAILEDRAWSIMSPATH/DetailedRawSimData".$$.".dat" or die "Can't open file $DETAILEDRAWSIMSPATH/DetailedRawSimData".$!;
+				
 		foreach my $DomArch (@$ArchsListRef){
 		
 		my ($CladeGenomes,$NodesObserved);
@@ -521,23 +523,30 @@ if($fullsims){
 			print DELS "$DomArch:$deletion_rate:$dels:$time:$TotalBranchLength\n" unless ($deletion_rate == 0);
 			#print "$DomArch:$deletion_rate\n";
 			
-			my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
+			my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims);
 					
 			if($deletion_rate > 0){
 		
 				unless($CachedResults->{"$deletion_rate:@$CladeGenomes"} && $store){
 						
-				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
-				$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution];		
+				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
+				$CachedResults->{"$deletion_rate:@$CladeGenomes"} = [$selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims];		
 				
 				}else{
 					
-					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
+					($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = @{$CachedResults->{"$deletion_rate:@$CladeGenomes"}};
 				}
 				
 				my $RawSimData = join(',',@$RawResults);
 				print RAWSIM @$CladeGenomes.','.@$NodesObserved.':'.$DomArch.':'.$RawSimData."\n";
 				#Print simulation data out to file so as to allow for testing of convergence
+				
+				if($HGTpercentage){
+					
+					my $DetailedRawSimData = join(',',@$DetailedHGTSims);
+					print DETRAWSIM $DomArch.':'.$DetailedRawSimData."\n";
+					#Print simulation data out to file so as to allow for testing of convergence
+				}
 				
 			}else{
 				
@@ -580,6 +589,7 @@ if($fullsims){
 		close DELS;
 		close RAWSIM;
 		close SELFTEST;
+		close DETRAWSIM;
 		
 	$pm->finish if ($maxProcs); # Terminates the child process
 	
@@ -595,7 +605,8 @@ if($fullsims){
 	`cat $RAWPATH/* > ./$OutputFilename-RawData.colsv`;
 	`cat $SIMULATIONSPATH/* > ./RawSimulationDists$Iterations-Itr$$.dat`;
 	`cat $SELFTERSTPATH/* > ./SelfTest-RawData.colsv`;
-	
+	`cat $DETAILEDRAWSIMSPATH/* > ./DetailedHGTOutput.dat` if($HGTpercentage);
+
 	open SCORES, "<$OutputFilename-RawData.colsv" or die $!;
 	
 	my $DomArch2ScoresHash = {};
