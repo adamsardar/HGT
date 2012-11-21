@@ -391,8 +391,9 @@ if($singlesim){
 			}
 									
 		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
-		
-				my $SingleCombGenomeSimHash = HGTTreeDeletionModelOptimised($MRCA,$model,$Iterations,[$dels,$time],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
+				
+				#Run a single simulation and output the simulated pseudo-observations
+				my $SingleCombGenomeSimHash = HGTTreeDeletionModelOptimised($MRCA,$model,1,[$dels,$time],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
 			
 			if(scalar(keys(%$SingleCombGenomeSimHash))){
 				$SingleSimDomCombGenomeHash->{$domainarchitecture}={};
