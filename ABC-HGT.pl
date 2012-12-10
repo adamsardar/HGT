@@ -10,12 +10,12 @@ ABC-HGTI<.pl>
  
  Example usage: 
 
-ABC-HGT.pl -r ../Eukaryotes/DombCombSupfamTree/poisson/EukaryotesDomArchUnnormalised-RawData.colsv -i ../EukaryoteTreeDomaarc.tree -o Poisson ABCCheck -p 0 -itr 100 -e 1 --check n
+ABC-HGT.pl -r ../Eukaryotes/DombCombSupfamTree/poisson/EukaryotesDomArchUnnormalised-RawData.colsv -i ../EukaryoteTreeDomaarc.tree -o Poisson ABCCheck -p 4 -itr 100 -e 1 --check n
 
 
 =head1 SYNOPSIS
 
-A means by which to test if a maximum likelihood estimate of 
+A means by which to test if a maximum likelihood estimate of deletion rate in the HGT models.
 
 =head1 AUTHOR
 
@@ -59,7 +59,7 @@ use File::Temp;
 use Time::HiRes;
 
 use Parallel::ForkManager;
-use Math::Random qw(random_uniform_integer random_gamma);
+use Math::Random qw(random_uniform_integer random_gamma random_normal);
 use List::Util qw(sum);#Used in generating summary statistics
 
 # Command Line Options
@@ -111,6 +111,7 @@ die "Inappropriate model chosen\n" unless ($model eq 'Julian' || $model eq 'pois
 my $dbh = dbConnect();
 
 mkdir("./$OutputDir");
+mkdir("./Posteriors");
 
 `mkdir /dev/shm/temp` unless (-d '/dev/shm/temp');
 my $RAMDISKPATH = '/dev/shm/temp';
@@ -329,9 +330,9 @@ foreach my $fork (0 .. $NoOfForks-1){
 				
 		if($deletion_rate > 0){
 	
-			
-			my @PriorRates = random_gamma(2*$Iterations,$time,$dels); 
-			#my @PriorRates = random_gamma(vals,beta,alpha); 
+			#my @PriorRates = random_gamma(2*$Iterations,$time,$dels); 
+			#my @PriorRates = random_normal(2*$Iterations,$dels/$time,($dels/$time)); 
+			my @PriorRates = random_gamma(vals,beta,alpha); 
 			#(beta**alpha) / Gamma(alpha) * X**(alpha - 1) * Exp(-beta*X)
 			#Supply a gamma distribution paramterised by beta=total time deletions occur in and alpha = total number deletions
 			#Mean of alpha/beta = dels/time
@@ -339,38 +340,36 @@ foreach my $fork (0 .. $NoOfForks-1){
 			#While loop over prior array
 			while (scalar(@$PosteriorEstimatesOFDeltionRate) < $Iterations){
 			
-				
-				my $simdelrate = pop(@PriorRates);
+				my $simdelrate = abs(pop(@PriorRates));
 				
 				if(scalar(@PriorRates) == 0){
 				
 					@PriorRates = random_gamma($Iterations,$time,$dels);
+					#@PriorRates = random_normal(2*$Iterations,$dels/$time,($dels/$time)); 
 				}
 				#If the pool of prior values is runnign out, supply a load more into the same array space
 				
 				#Perfrom simulation according to model as chosen
-					if($model eq 'Julian'){
-										
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,1,$simdelrate,$TreeCacheHash);
-																						
-					}elsif($model eq 'poisson'){
-						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$simdelrate,$TreeCacheHash);
-	
-					}elsif($model eq 'corrpoisson'){
-						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,1,$simdelrate,$TreeCacheHash);
-	
-					}else{
-						die "No appropriate model selected";
-					}
-					
 				
-				map{push(@$PosteriorEstimatesOFDeltionRate,$simdelrate) if(abs($NumberOfGenomes-$_) < $epsilon)}@$RawResults; #Add simulated deletion rate to the posterior if a simulation performed at that rate created a reasonably close value
+				#Run simulations. Say 10 itr
+				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,undef) = HGTTreeDeletionModelOptimised($MRCA,$model,10,[$simdelrate],$TreeCacheHash,0,'drop');
 				
-			}	
+				map{push(@$PosteriorEstimatesOFDeltionRate,$simdelrate) if(abs($NumberOfGenomes-$_) <= $epsilon)}@$RawResults; #Add simulated deletion rate to the posterior if a simulation performed at that rate created a reasonably close value
+			}
 			
-			open TEMPPOSTERIOR, ">./.$$-TempPosterior.dat" or die $!.$?;
+			my $outputfilename;
+			
+			if(length($DomArch."-Posterior.dat") < 170){
+			
+				$outputfilename = $DomArch;
+			}else{
+				
+				my $FName = substr($DomArch,0,170);
+				$outputfilename = $FName;
+			}
+			
+			
+			open TEMPPOSTERIOR, ">./Posteriors/$outputfilename-Posterior.dat" or die $!.$?;
 			print TEMPPOSTERIOR join("\n",@$PosteriorEstimatesOFDeltionRate);
 			close TEMPPOSTERIOR;
 			
@@ -382,32 +381,14 @@ foreach my $fork (0 .. $NoOfForks-1){
 				$Score = $DomArch2ScoresHash->{$DomArch} ;
 			}
 			
-			my $outputfilename;
-			
-			if(length($DomArch.".png") < 255){
-			
-				$outputfilename = $DomArch.".png";
-				
-			}else{
-				
-				my $FName = substr($DomArch,0,200);
-				$outputfilename = $FName.".png";
-			}
-			
-			
-			`Hist.py -f './.$$-TempPosterior.dat' -o ./$OutputDir/$outputfilename -t '$DomArch ABC vs Max. LH' -x 'Deletion Rate' -y 'Frequency' -l 'Score:$Score\nClade Size:$cladesize Observed:$NumberOfGenomes\nEpsilon:$epsilon' --vline $deletion_rate --column 0`;
+			`Hist.py -f './Posteriors/$outputfilename-Posterior.dat' -o ./$OutputDir/$outputfilename.png -t '$DomArch ABC vs Max. LH' -x 'Deletion Rate' -y 'Frequency' -l 'Score:$Score\nClade Size:$cladesize Observed:$NumberOfGenomes\nEpsilon:$epsilon' --vline $deletion_rate --column 0`;
 			
 			my $AverageDifference = 0;
 			map{$AverageDifference += ($deletion_rate-$_)}@$PosteriorEstimatesOFDeltionRate;
+			$AverageDifference=$AverageDifference/$Iterations;
 			
 			print OUT $AverageDifference.":".$Score."\n";
-			
-			#TODO produce a summary of the distance between the ML value and all the ABC estimates
-			#TODO plot this as a line plot
-			
 		}
-		
-		
 	}
 
 
