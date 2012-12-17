@@ -1,4 +1,4 @@
-#! /usr/bin/env perl
+#!/usr/bin/env perl
 
 =head1 NAME
 
@@ -138,7 +138,7 @@ if($TreeFile){
 
 #Read in Scores from a previous simulation
 my $DomArch2ScoresHash = {};
-open SCORES, "<$rawdatafile" or die $?;
+open SCORES, "<$rawdatafile" or die $?."\t".$!;
 
 while (my $line = <SCORES>){
 	
@@ -330,9 +330,9 @@ foreach my $fork (0 .. $NoOfForks-1){
 				
 		if($deletion_rate > 0){
 	
-			#my @PriorRates = random_gamma(2*$Iterations,$time,$dels); 
+			my @PriorRates = random_gamma(2*$Iterations,$time,$dels); 
 			#my @PriorRates = random_normal(2*$Iterations,$dels/$time,($dels/$time)); 
-			my @PriorRates = random_gamma(vals,beta,alpha); 
+			#my @PriorRates = random_gamma(vals,beta,alpha); 
 			#(beta**alpha) / Gamma(alpha) * X**(alpha - 1) * Exp(-beta*X)
 			#Supply a gamma distribution paramterised by beta=total time deletions occur in and alpha = total number deletions
 			#Mean of alpha/beta = dels/time
