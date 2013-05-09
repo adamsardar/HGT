@@ -386,15 +386,41 @@ if($singlesim){
 			
 			unless(scalar(@$NodesObserved) == 1){
 				
-				($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree
-				$deletion_rate = $dels/$time;
-				
+					if($PriorsLibrary){
+					 		
+					 		
+					 		unless(-e $PriorsLibrary."/".$domainarchitecture."-Posterior.dat"){
+					 			
+					 			carp "No prior file for domarach $domainarchitecture \n" if ($verbose);
+					 			($dels, $time) =(0,1);
+					 		}else{
+					 			
+					 			croak "Only poisson based models supported with priors at current! (this is $model)\n" unless ($model  =~ m/poisson/);
+					 			
+						 		open PRIORS, $PriorsLibrary."/".$domainarchitecture."-Posterior.dat" or die $!."\t".$?;
+						 		my @PriorRates = <PRIORS>;
+						 		close PRIORS;
+	
+					 			$dels = mean(@PriorRates);
+					 			$time = 1;
+					 		}
+					 		
+					 		
+					 	}else{
+							($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+										 		
+					 	}
+					
+					$deletion_rate = $dels/$time;
+					
 			}else{
 				
 				$deletion_rate = 0;	
 				$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
 			}
-									
+			
+			
+								
 		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
 				
 				#Run a single simulation and output the simulated pseudo-observations
@@ -504,23 +530,22 @@ if($fullsims){
 				 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson' || $model eq 'negbin' || $model eq 'corrnegbin'){
 				 	
 					 	if($PriorsLibrary){
-					 		
-					 		
-					 		unless(-e $PriorsLibrary."/".$DomArch."-Posterior.dat"){
-					 			
-					 			carp "No prior file for domarach $DomArch \n" if ($verbose);
-					 			($dels, $time) =(0,1);
-					 		}else{
-					 			
-					 			croak "Only poisson based models supported with priors at current! (this is $model)\n" unless ($model  =~ m/poisson/);
-					 			
-						 		open PRIORS, $PriorsLibrary."/".$DomArch."-Posterior.dat" or die $!."\t".$?;
-						 		my @PriorRates = <PRIORS>;
-						 		close PRIORS;
-	
-					 			$dels = median(@PriorRates);
-					 			$time = 1;
-					 		}
+					 	
+						 		unless(-e $PriorsLibrary."/".$DomArch."-Posterior.dat"){
+						 			
+						 			carp "No prior file for domarach $DomArch \n" if ($verbose);
+						 			($dels, $time) =(0,1);
+						 		}else{
+										 			
+						 			croak "Only poisson based models supported with priors at current! (this is $model)\n" unless ($model  =~ m/poisson/);
+						 			
+							 		open PRIORS, $PriorsLibrary."/".$DomArch."-Posterior.dat" or die $!."\t".$?;
+							 		my @PriorRates = <PRIORS>;
+							 		close PRIORS;
+		
+						 			$dels = mean(@PriorRates);
+						 			$time = 1;
+						 		}
 					 		
 					 		
 					 	}else{
