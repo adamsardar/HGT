@@ -108,6 +108,8 @@ use Parallel::ForkManager;
 use Math::Random qw(random_uniform_integer random_uniform random_exponential);
 use List::Util qw(sum);#Used in generating summary statistics
 
+use Statistics::Basic qw(:all);
+
 # Command Line Options
 #----------------------------------------------------------------------------------------------------------------
 
@@ -133,6 +135,7 @@ my $singlesim;
 my $HGTpercentage = 0;
 my $delmodel = 'Julian';
 my $HGTmodel = 'drop';
+my $PriorsLibrary;
 
 my $CommandOps = join("  ",@ARGV);
 
@@ -157,6 +160,7 @@ GetOptions("verbose|v!"  => \$verbose,
            "delmodel|dm:s" => \$delmodel,
            "HGTmodel|hm:s" => \$HGTmodel,
            "HGTpercentage|ht:i" => \$HGTpercentage,
+           "priorlibrary|pl:s" => \$PriorsLibrary,
         ) or die "Fatal Error: Problem parsing command-line ".$!;
 #---------------------------------------------------------------------------------------------------------------
 #Print out some help if it was asked for or if no arguments were given.
@@ -382,15 +386,41 @@ if($singlesim){
 			
 			unless(scalar(@$NodesObserved) == 1){
 				
-				($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree
-				$deletion_rate = $dels/$time;
-				
+					if($PriorsLibrary){
+					 		
+					 		
+					 		unless(-e $PriorsLibrary."/".$domainarchitecture."-Posterior.dat"){
+					 			
+					 			carp "No prior file for domarach $domainarchitecture \n" if ($verbose);
+					 			($dels, $time) =(0,1);
+					 		}else{
+					 			
+					 			croak "Only poisson based models supported with priors at current! (this is $model)\n" unless ($model  =~ m/poisson/);
+					 			
+						 		open PRIORS, $PriorsLibrary."/".$domainarchitecture."-Posterior.dat" or die $!."\t".$?;
+						 		my @PriorRates = <PRIORS>;
+						 		close PRIORS;
+	
+					 			$dels = mean(@PriorRates);
+					 			$time = 1;
+					 		}
+					 		
+					 		
+					 	}else{
+							($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$domainarchitecture); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+										 		
+					 	}
+					
+					$deletion_rate = $dels/$time;
+					
 			}else{
 				
 				$deletion_rate = 0;	
 				$MRCA = $NodeIDsObserved[0] ; #Most Recent Common Ancestor
 			}
-									
+			
+			
+								
 		unless($deletion_rate < 10**-8){#Unless the deletion rate is zero (or less than epsilon)
 				
 				#Run a single simulation and output the simulated pseudo-observations
@@ -456,13 +486,11 @@ if($fullsims){
 	
 	print STDERR "No Dom Archs in job batch is approx: ".$binsize."\n";
 		
-		
 	my $pm = new Parallel::ForkManager($maxProcs) if ($maxProcs);# Initialise
 	
 	foreach my $fork (0 .. $NoOfForks-1){
 		
 		my $ArchsListRef = $ForkJobsHash->{$fork};
-			
 			
 		# Forks and returns the pid for the child:
 		if ($maxProcs){$pm->start and next};
@@ -501,8 +529,30 @@ if($fullsims){
 	
 				 if($model eq 'Julian' || $model eq 'poisson' || $model eq 'corrpoisson' || $model eq 'negbin' || $model eq 'corrnegbin'){
 				 	
-						($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
-						
+					 	if($PriorsLibrary){
+					 	
+						 		unless(-e $PriorsLibrary."/".$DomArch."-Posterior.dat"){
+						 			
+						 			carp "No prior file for domarach $DomArch \n" if ($verbose);
+						 			($dels, $time) =(0,1);
+						 		}else{
+										 			
+						 			croak "Only poisson based models supported with priors at current! (this is $model)\n" unless ($model  =~ m/poisson/);
+						 			
+							 		open PRIORS, $PriorsLibrary."/".$DomArch."-Posterior.dat" or die $!."\t".$?;
+							 		my @PriorRates = <PRIORS>;
+							 		close PRIORS;
+		
+						 			$dels = mean(@PriorRates);
+						 			$time = 1;
+						 		}
+					 		
+					 		
+					 	}else{
+							($dels, $time) = DeletedJulian($MRCA,0,0,$HashOfGenomesObserved,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+										 		
+					 	}
+
 					}else{
 						
 						die "Inappropriate model selected";

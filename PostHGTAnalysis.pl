@@ -67,6 +67,7 @@ my $NumberOfExamples = 20;
 my $Width = 1500;
 
 my $OutputDir = 'IndepthStudyOfDAs';
+my $SummaryDir = 'SummaryStatistics';
 
 #Set command line flags and parameters.
 GetOptions("verbose|v!"  => \$verbose,
@@ -88,6 +89,7 @@ pod2usage(-exitstatus => 0, -verbose => 2) if $help;
 #----------------------------------------------------------------------------------------------------------------
 
 #Create an output directory if it doesn't already exist
+mkdir("./$SummaryDir");
 mkdir("./$OutputDir");
 
 #Read in Del Rates
@@ -117,9 +119,11 @@ close SCORES;
 
 my @DomArchs = keys(%$DomArch2ScoresHash);
 my @StudiedDomArchs = map{$DomArchs[POSIX::ceil(rand(scalar(@DomArchs)))]}(1 .. $NumberOfExamples);
+my $StudyDAHash = {};
+map{$StudyDAHash->{$_}=undef}@StudiedDomArchs;
 
 my $RawSimsHash = {};
-map{$RawSimsHash->{$_}={}}@StudiedDomArchs;
+map{$RawSimsHash->{$_}={}}@DomArchs;
 
 open RAWSIMS, "<$SimulationsDataFile" or die $!.$?;
 
@@ -140,17 +144,44 @@ while (my $line = <RAWSIMS>){
 }
 close RAWSIMS;
 
+open SUMMARY, ">./$SummaryDir/Summary.txt" or die $!."\t".$?;
+print SUMMARY "DomArch\tCladeSize\tCladeOccupance\tCladeFraction\tDelRate\tPQ\n";
+
+my $PredictivePosteriorHash = {};
+@{$PredictivePosteriorHash}{(0.01,0.02,0.05,0.1,0.25,0.5)}=([],[],[],[],[],[]);
+
+my $OneTailPredictivePosteriorHash = {};
+@{$OneTailPredictivePosteriorHash}{(0.01,0.02,0.05,0.1,0.25,0.5)}=([],[],[],[],[],[]);
+
 open CLADESIZE, ">.CladeSizes.dat" or die $!.$?;
 
 # for number_of_examples random selection of results
-foreach my $DomArch (@StudiedDomArchs){
+foreach my $DomArch (@DomArchs){
 
 	my $DelRate;
 	$DelRate = 'unkown' unless(exists($DomArch2DelsHash->{$DomArch}));
 	$DelRate = $DomArch2DelsHash->{$DomArch} if(exists($DomArch2DelsHash->{$DomArch}));
 	
 	my $Score = $DomArch2ScoresHash->{$DomArch};
-
+	
+	foreach my $PosteriorPreditiveQuartile (keys(%$PredictivePosteriorHash)){
+		
+		if($Score > 0.5){
+			
+			push(@{$PredictivePosteriorHash->{$PosteriorPreditiveQuartile}},$DomArch) if(abs($Score - 1) <= $PosteriorPreditiveQuartile/2);
+			push(@{$OneTailPredictivePosteriorHash->{$PosteriorPreditiveQuartile}},$DomArch) if(abs($Score - 1) <= $PosteriorPreditiveQuartile/2);
+		}else{
+			
+			push(@{$PredictivePosteriorHash->{$PosteriorPreditiveQuartile}},$DomArch) if(($Score) <= $PosteriorPreditiveQuartile/2);
+		}
+		#If the score liesoutside the major density of the posterior at some range, push it onto the list
+		
+	}
+		
+	my ($NumberOfGenomes,$cladesize) = @{$RawSimsHash->{$DomArch}{'ObservedNumberOfGenomes'}};
+	
+	
+	if (exists($StudyDAHash->{$DomArch})){
 	#Create css overlay
 	`prepareTraitTreeOverlay.pl -da $DomArch -ss 1 -t $treefile`;
 	
@@ -170,15 +201,42 @@ foreach my $DomArch (@StudiedDomArchs){
 	open FH, ">.TempHistFile.dat";
 	print FH join("\n",@{$RawSimsHash->{$DomArch}{'Simulations'}});
 	close FH;
-		
-	my ($NumberOfGenomes,$cladesize) = @{$RawSimsHash->{$DomArch}{'ObservedNumberOfGenomes'}};
-	
-	print CLADESIZE $DomArch.":".$cladesize."\n";
 	
 	`Hist.py -f './.TempHistFile.dat' -o ./$OutputDir/$DomArch.HistPlacement.png -t '$DomArch \nSimulations' -x 'Number Of Genomes' -y 'Frequency' -l 'Score:$Score\nDel Rate:$DelRate\nClade Size:$cladesize Observed:$NumberOfGenomes' --vline $NumberOfGenomes --column 0`;
+	
+	}
+
+	print CLADESIZE $DomArch.":".$cladesize."\n";
+	my $cladeFraction = $NumberOfGenomes/$cladesize;
+	print SUMMARY $DomArch."\t".$cladesize."\t".$NumberOfGenomes."\t".$cladeFraction."\t".$DelRate."\t".$Score."\n";
+	
 }
 
 close CLADESIZE;
+close SUMMARY;
+
+open PREDITIVESUMMARY, ">./$SummaryDir/QuartileDetails.dat" or die $!."\t".$?;
+print PREDITIVESUMMARY "Quantile\tTwoTailedDensity\tTopHalf(OneTailed)Density%\tInverseTwoTail\n";	
+
+foreach my $PosteriorQuartile (sort(keys(%$PredictivePosteriorHash))){
+	
+	my $ListOfDAs = $PredictivePosteriorHash->{$PosteriorQuartile};
+	
+	open PREDITIVEPOSTERIOR, ">./$SummaryDir/PerArchAcceptReject".$PosteriorQuartile.".dat" or die $!."\t".$?;
+	print PREDITIVEPOSTERIOR join("\n",@$ListOfDAs);
+	close PREDITIVEPOSTERIOR;
+	
+	my $oneTailedDAs = $OneTailPredictivePosteriorHash->{$PosteriorQuartile};
+	
+	my $TwoTailedpercent = 100*scalar(@$ListOfDAs)/scalar(@DomArchs);
+	my $OneTailedpercent = 100*scalar(@$oneTailedDAs)/scalar(@DomArchs);
+	my $quantile = 100*$PosteriorQuartile;
+	my $inversedensity = 100 - $TwoTailedpercent;
+	print PREDITIVESUMMARY $quantile."%\t".$TwoTailedpercent."%\t".$OneTailedpercent."\t".$inversedensity."%\n";	
+}
+
+close PREDITIVESUMMARY;
+
 
 unless(-e "./CladeSizesHist.png"){
 	`Hist.py -f './.CladeSizes.dat' -o ./CladeSizesHist.png -t 'Histogram Of Cladesizes' -x 'Clade Size' -y 'Frequency' -l 'Number of Dom Archs' --column 1`;
