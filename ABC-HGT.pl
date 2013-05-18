@@ -325,14 +325,47 @@ foreach my $fork (0 .. $NoOfForks-1){
 		
 		my $cladesize = scalar(@$CladeGenomes);
 		
-		my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution);
+		my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims);
 				
 		my $PosteriorEstimatesOFDeltionRate = [];	#This are the crucial piece of data generated from this ABC process. The posterior estimates of the parameters
-				
+		
+		my $Priordelsest = 0;
+		my $Priortimeest = 0;
+		
 		if($deletion_rate > 0){
-	
 			
-			my @PriorRates = random_gamma(2*$Iterations,$time,$dels); 
+			#do 10 iterations so as to 'shift' the prior distribution a bit and improve sampling.
+			
+			my $HyperPriorLoop = 0;
+			my @HyperPriorRates = random_gamma(100,$time,$dels); 
+			
+			while ($HyperPriorLoop < 20){
+			
+				
+				my $simdelrate = pop(@HyperPriorRates);
+				
+				if(scalar(@HyperPriorRates) == 0){
+				
+					@HyperPriorRates = random_gamma(500,$time,$dels);
+				}
+				#If the pool of prior values is runnign out, supply a load more into the same array space
+				
+				#Perfrom simulation according to model as chosen
+				my $SingleCombGenomeSimHash =  HGTTreeDeletionModelOptimised($MRCA,$model,1,[$simdelrate],$TreeCacheHash,0,'scatter');
+				my $NsimGenomes=scalar(keys(%$SingleCombGenomeSimHash));
+				
+				if(abs($NsimGenomes-$NumberOfGenomes) == 0){
+						
+						my ($pdels, $ptime) = DeletedJulian($MRCA,0,0,$SingleCombGenomeSimHash,$TreeCacheHash,$root,$DomArch); # ($tree,$AncestorNodeID,$dels,$time,$GenomesOfDomArch) - calculate deltion rate over tree	
+						$Priordelsest+=$pdels/20;
+						$Priortimeest+=$ptime/20;
+						$HyperPriorLoop++;
+				}
+			}
+			
+			
+			
+			my @PriorRates = random_gamma(2*$Iterations,$Priortimeest,$Priordelsest); 
 			#my @PriorRates = random_gamma(vals,beta,alpha); 
 			#(beta**alpha) / Gamma(alpha) * X**(alpha - 1) * Exp(-beta*X)
 			#Supply a gamma distribution paramterised by beta=total time deletions occur in and alpha = total number deletions
@@ -351,22 +384,8 @@ foreach my $fork (0 .. $NoOfForks-1){
 				#If the pool of prior values is runnign out, supply a load more into the same array space
 				
 				#Perfrom simulation according to model as chosen
-					if($model eq 'Julian'){
-										
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelJulian($MRCA,$FalseNegativeRate,1,$simdelrate,$TreeCacheHash);
-																						
-					}elsif($model eq 'poisson'){
-						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelPoisson($MRCA,$FalseNegativeRate,1,$simdelrate,$TreeCacheHash);
-	
-					}elsif($model eq 'corrpoisson'){
-						
-						($selftest,$distribution,$RawResults,$DeletionsNumberDistribution) = RandomModelCorrPoisson($MRCA,$FalseNegativeRate,1,$simdelrate,$TreeCacheHash);
-	
-					}else{
-						die "No appropriate model selected";
-					}
-					
+				($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,1,[$simdelrate],$TreeCacheHash,0,'scatter');
+			
 				
 				map{push(@$PosteriorEstimatesOFDeltionRate,$simdelrate) if(abs($NumberOfGenomes-$_) < $epsilon)}@$RawResults; #Add simulated deletion rate to the posterior if a simulation performed at that rate created a reasonably close value
 				
@@ -407,6 +426,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 			#TODO produce a summary of the distance between the ML value and all the ABC estimates
 			#TODO plot this as a line plot
 			
+			print STDERR "Done $DomArch\n" if($verbose);
 		}
 		
 		

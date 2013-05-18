@@ -108,6 +108,7 @@ use Math::Random qw(random_uniform_integer random_uniform random_exponential);
 use List::Util qw(sum);#Used in generating summary statistics
 use List::MoreUtils qw(minmax);
 use Statistics::Basic qw(:all);
+use POSIX;
 
 # Command Line Options
 #----------------------------------------------------------------------------------------------------------------
@@ -453,41 +454,22 @@ foreach my $fork (0 .. $NoOfForks-1){
 			}			
 			croak "Something wrong with sort routine\n" if($loopcount > scalar(@PriorRates));
 			
+			my $NPriorSims = scalar(@PriorRates);
+			my $DensityScalingFactor = $Iterations/$NPriorSims;
 			
-			print "Here\n";
-			#Sample $Iteration times form a weighted probability of the bin sizes ... by cumulatives I guess
 			
-			#for each rate catergory, do a number of simulations equal to the number of times we samples at that rate
-			
-			my $cumulativecount = 0;
-			my $cumulativeInvertHash = {};
-			
-			foreach my $key (keys(%$RatesHash)){
+			while (my ($rate,$priordensity) = each(%$RatesHash)){
 				
-				$cumulativecount+= $RatesHash->{$key};
-				$cumulativeInvertHash->{$cumulativecount}=$key;
-			}
-			
-			my @Points= keys(%$cumulativeInvertHash);
-			
-			 my $PointTree = Supfam::PointTree->new;
-   			 $PointTree->build(\@Points);
-  			#Create the PointTree
-			
-			$PointTree->UniformAssign($Iterations/2);
-			$PointTree->UniformPoolAssign($Iterations/2);
-			
-			my $DelRateArray = [];
-			$PointTree->UniformDraw($Iterations,$DelRateArray);
-			
-			
-			my $SimRatesHash = {};
-			map{$SimRatesHash->{$cumulativeInvertHash->{$_}}++}@$DelRateArray;
-			
-			while (my ($rate,$priordensity) = each(%$SimRatesHash)){
+				my $DesiredDesnity = ceil($priordensity*$DensityScalingFactor);
+				#Scale the sampling denisty so as to be of the number of iterations desired
 				
-				next unless($priordensity > 1);
-				($selftest,undef,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$priordensity,[$rate],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
+				unless($DesiredDesnity > 1){
+					
+					carp "Prior density of 1 found for DA $DomArch- you sure you want this many rate catergories/iterations?\n";
+					next;
+				}
+				
+				($selftest,undef,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$DesiredDesnity,[$rate],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
 				map{$distribution->{$_}++}@$RawResults;
 			}
 			
@@ -508,12 +490,14 @@ foreach my $fork (0 .. $NoOfForks-1){
 		my $CladeSize = scalar(@$CladeGenomes);
 	
 		unless($deletion_rate < 10**-8){ #Unless the deletion rate is zero (or less than epsilon)
-
-			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
+			
+			my $EffectiveIterations = scalar(@$RawResults);
+			
+			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$EffectiveIterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 			
 			$distribution->{$selftest}--;
-	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$EffectiveIterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 
 			#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
 		

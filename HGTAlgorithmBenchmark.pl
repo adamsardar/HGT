@@ -130,7 +130,7 @@ print "Done normal Poisson in ".($toc-$tic)."\n";
 $tic = Time::HiRes::time;
 my $distributionB;
 
-($selftest,$distributionB,$RawResults,$DeletionsNumberDistribution) = HGTTreeDeletionModelOptimised($root,$model,$Iterations,$dels,$time,$TreeCacheHash,0);
+($selftest,$distributionB,$RawResults,$DeletionsNumberDistribution,undef) = HGTTreeDeletionModelOptimised($root,$model,$Iterations,[$dels,$time],$TreeCacheHash,0,'drop');	
 
 $toc = Time::HiRes::time;
 
