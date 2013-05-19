@@ -452,24 +452,52 @@ foreach my $fork (0 .. $NoOfForks-1){
 				}
 				$loopcount++;
 			}			
-			croak "Something wrong with sort routine\n" if($loopcount > scalar(@PriorRates));
+			croak "Something wrong with sort routine\n" unless($loopcount == scalar(@PriorRates));
+						
+			my $DensityAreaHash = {};
+			my @UniformInt = sort{$a <=> $b}(random_uniform_integer($Iterations,1,$loopcount));
+						
+			my $sum = 0;
 			
-			my $NPriorSims = scalar(@PriorRates);
-			my $DensityScalingFactor = $Iterations/$NPriorSims;
-			
-			
-			while (my ($rate,$priordensity) = each(%$RatesHash)){
+			foreach my $binkey (keys(%$RatesHash)){
 				
-				my $DesiredDesnity = ceil($priordensity*$DensityScalingFactor);
-				#Scale the sampling denisty so as to be of the number of iterations desired
+				my $flag = 1;
+				my $Density = $RatesHash->{$binkey};
 				
-				unless($DesiredDesnity > 1){
+				my $BinDensityHigh = $sum+$Density;
+				my $BinDensityLow = $sum;
+				
+				while ($flag && scalar(@UniformInt)){
+					
+					my $Rand = shift(@UniformInt);
+					
+					if($Rand <= $BinDensityHigh && $Rand >= $BinDensityLow){
+						
+						$DensityAreaHash->{$binkey}++;
+					}elsif($Rand < $BinDensityLow){
+						
+						croak "Something wrong with bin packing here\n";
+						
+					}else{
+						unshift(@UniformInt,$Rand);
+						$flag--;
+					}
+				}
+				
+				$sum+=$Density;
+			}
+		
+
+			while (my ($rate,$density) = each(%$DensityAreaHash)){
+				
+
+				unless($density > 1){
 					
 					carp "Prior density of 1 found for DA $DomArch- you sure you want this many rate catergories/iterations?\n";
 					next;
 				}
 				
-				($selftest,undef,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$DesiredDesnity,[$rate],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
+				($selftest,undef,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$density,[$rate],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
 				map{$distribution->{$_}++}@$RawResults;
 			}
 			
@@ -490,14 +518,12 @@ foreach my $fork (0 .. $NoOfForks-1){
 		my $CladeSize = scalar(@$CladeGenomes);
 	
 		unless($deletion_rate < 10**-8){ #Unless the deletion rate is zero (or less than epsilon)
-			
-			my $EffectiveIterations = scalar(@$RawResults);
-			
-			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$EffectiveIterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
+
+			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
 			
 			$distribution->{$selftest}--;
-	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$EffectiveIterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
+	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)
 
 			#Self test is a measure of how reliable the simualtion is and whether we have achieved convergence - one random genome is chosen as a substitute for 'reality'.
 		
