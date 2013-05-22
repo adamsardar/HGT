@@ -397,6 +397,7 @@ foreach my $fork (0 .. $NoOfForks-1){
 		#print "$DomArch:$deletion_rate\n";
 		
 		my ($selftest,$distribution,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims);
+		my $AllRaws = [];
 				
 		if($deletion_rate > 0){
 			
@@ -497,13 +498,14 @@ foreach my $fork (0 .. $NoOfForks-1){
 					next;
 				}
 				
-				($selftest,undef,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$density,[$rate],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
+				(undef,undef,$RawResults,$DeletionsNumberDistribution,$DetailedHGTSims) = HGTTreeDeletionModelOptimised($MRCA,$model,$density,[$rate],$TreeCacheHash,$HGTpercentage/100,$HGTmodel);
 				map{$distribution->{$_}++}@$RawResults;
 			}
 			
 			my $RawSimData = join(',',@$RawResults);
 			print RAWSIM @$CladeGenomes.','.@$NodesObserved.':'.$DomArch.':'.$RawSimData."\n";
 			#Print simulation data out to file so as to allow for testing of convergence
+			push(@$AllRaws,@$RawResults);
 			
 		}else{
 			
@@ -521,6 +523,8 @@ foreach my $fork (0 .. $NoOfForks-1){
 
 			my $PosteriorQuantileScore = calculatePosteriorQuantile($NoGenomesObserved,$distribution,$Iterations+1,$CladeSize); # ($SingleValue,%DistributionHash,$NumberOfSimulations,$CladeSize)
 			#Self test treats a randomly chosen simulation as though it were a true result. We therefore reduce the distribution count at that point by one, as we are picking it out. This is a sanity check.
+			
+			my $SelfTest = $AllRaws->[random_uniform_integer(1,0,(scalar(@$AllRaws)-1))];
 			
 			$distribution->{$selftest}--;
 	 		my $SelfTestPosteriorQuantile = calculatePosteriorQuantile($selftest,$distribution,$Iterations,$CladeSize); #($SingleValue,$DistributionHash,$NumberOfSimulations)

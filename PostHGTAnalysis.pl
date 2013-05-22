@@ -1,4 +1,4 @@
-#! /usr/bin/perl -w
+#!/usr/bin/env perl
 
 =head1 NAME
 
@@ -46,6 +46,7 @@ use Pod::Usage;                       #Print a usage man page from the POD comme
 use Data::Dumper;                     #Allow easy print dumps of datastructures for debugging
 #use XML::Simple qw(:strict);          #Load a config file from the local directory
 use DBI;
+use Carp;
 use Supfam::Utils;
 
 
@@ -95,7 +96,7 @@ mkdir("./$OutputDir");
 #Read in Del Rates
 my $DomArch2DelsHash = {};
 
-open DELS, "<$DelRatesFile" or warn "No Deletions File:\n\n".$!.$?;
+open DELS, "<$DelRatesFile" or croak "No Deletions File:\n\n".$!.$?;
 
 while (my $line = <DELS>){
 	
@@ -107,7 +108,7 @@ close DELS;
 
 #Read in Scores
 my $DomArch2ScoresHash = {};
-open SCORES, "<$rawdatafile" or die $?;
+open SCORES, "<$rawdatafile" or croak "No scores file".$!.$?;
 
 while (my $line = <SCORES>){
 	
@@ -125,7 +126,7 @@ map{$StudyDAHash->{$_}=undef}@StudiedDomArchs;
 my $RawSimsHash = {};
 map{$RawSimsHash->{$_}={}}@DomArchs;
 
-open RAWSIMS, "<$SimulationsDataFile" or die $!.$?;
+open RAWSIMS, "<$SimulationsDataFile" or croak "No Simulations file".$!.$?;
 
 while (my $line = <RAWSIMS>){
 	
